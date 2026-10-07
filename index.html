@@ -329,9 +329,43 @@ html[data-theme="ocean"]{--bg:#071923;--panel:#0b2533;--panel-2:#103447;--border
 html[data-theme="rose"]{--bg:#210914;--panel:#32101f;--panel-2:#46152b;--border:#71324f;--text:#fff1f5;--text-muted:#d6a3b6;--brand:#f472b6;--brand-2:#db2777}
 html[data-theme="slate"]{--bg:#111827;--panel:#1f2937;--panel-2:#273548;--border:#3b4a60;--text:#f8fafc;--text-muted:#a9b4c3;--brand:#94a3b8;--brand-2:#64748b}
 html[data-theme="sunset"]{--bg:#241008;--panel:#35170d;--panel-2:#48200f;--border:#6d351d;--text:#fff7ed;--text-muted:#d9ae91;--brand:#fb923c;--brand-2:#ea580c}
+
+/* ===== Viora v9: chat-only theme readability ===== */
+.chat-active .bubble{color:var(--chat-in-text,var(--text));}
+.chat-active .msg-row.out .bubble{color:var(--chat-out-text,var(--text));}
+.chat-active .bubble .text{color:inherit!important;}
+.chat-active .bubble .text a{color:var(--chat-link,#2563eb)!important;}
+.chat-active .bubble .meta{color:var(--chat-meta,var(--text-muted));}
+.chat-active .reply-snippet .r-text{color:inherit;}
+[data-theme="dark"]{--chat-in-text:#EAF2F5;--chat-out-text:#EAF7EE;--chat-link:#7DD3FC;--chat-meta:#A8B6BE;}
+[data-theme="midnight"]{--chat-in-text:#F0F6FF;--chat-out-text:#F3F9FF;--chat-link:#7DD3FC;--chat-meta:#9FB2C8;}
+[data-theme="forest"]{--chat-in-text:#F0FFF6;--chat-out-text:#F1FFF7;--chat-link:#86EFAC;--chat-meta:#A9C8B5;}
+[data-theme="ocean"]{--chat-in-text:#F0FBFF;--chat-out-text:#F0FCFF;--chat-link:#7DD3FC;--chat-meta:#A6C4D1;}
+[data-theme="rose"]{--chat-in-text:#FFF3F7;--chat-out-text:#FFF5F8;--chat-link:#FDA4AF;--chat-meta:#D8AABA;}
+[data-theme="slate"]{--chat-in-text:#F8FAFC;--chat-out-text:#FFFFFF;--chat-link:#93C5FD;--chat-meta:#B4C0CF;}
+[data-theme="sunset"]{--chat-in-text:#FFF7ED;--chat-out-text:#FFF8F0;--chat-link:#FDBA74;--chat-meta:#D8B092;}
+/* Light/default chat remains dark and highly readable. */
+[data-theme="light"],:root{--chat-in-text:#17202A;--chat-out-text:#12311F;--chat-link:#2563EB;--chat-meta:#66727D;}
+
+/* Hidden people pickers must stay hidden until Selected people is chosen. */
+.people-picker[hidden]{display:none!important;}
+
+/* Professional initial chat loading window */
+#vioraChatLoading{position:fixed;inset:0;z-index:10050;display:none;align-items:center;justify-content:center;background:rgba(7,14,18,.62);backdrop-filter:blur(8px);}
+#vioraChatLoading.show{display:flex;}
+.v9-loading-card{width:min(330px,calc(100vw - 40px));padding:28px 24px;border-radius:22px;background:var(--panel);color:var(--text);box-shadow:0 24px 70px rgba(0,0,0,.28);text-align:center;border:1px solid var(--border);}
+.v9-loading-spinner{width:38px;height:38px;margin:0 auto 15px;border:3px solid color-mix(in srgb,var(--brand) 18%,transparent);border-top-color:var(--brand);border-radius:50%;animation:v9spin .75s linear infinite;}
+@keyframes v9spin{to{transform:rotate(360deg)}}
+.v9-loading-title{font-size:16px;font-weight:700}.v9-loading-sub{font-size:12.5px;color:var(--text-muted);margin-top:6px}
+
+/* Image crop/send preview */
+.v9-crop-btn{margin-top:10px;width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:11px;background:var(--panel-2);color:var(--text);font-weight:600;}
+.v9-crop-btn:hover{border-color:var(--brand);color:var(--brand);}
 </style>
 </head>
 <body>
+
+<div id="vioraChatLoading" aria-hidden="true"><div class="v9-loading-card"><div class="v9-loading-spinner"></div><div class="v9-loading-title">Loading chats</div><div class="v9-loading-sub">Getting your conversations ready…</div></div></div>
 
 <!-- SPLASH -->
 <div class="splash" id="splash">
@@ -503,7 +537,7 @@ html[data-theme="sunset"]{--bg:#241008;--panel:#35170d;--panel-2:#48200f;--borde
 window.CONFIG = {
   APP_NAME: "Viora",                           // ← change app name here
   APP_TAGLINE: "Private. Simple. Connected.",     // ← change tagline
-  VERSION: "5.0.0",
+  VERSION: "5.1.0",
 
   // 🔴🔴🔴  PASTE YOUR APPS SCRIPT URL HERE  🔴🔴🔴
   API_URL: "https://script.google.com/macros/s/AKfycbzQLTEsGsZTIKrmxKQWCA7ZKmvWwZh-VJTW7K83Zj-z59aKLRY_73uMBbAg8jrvRMYJ/exec",
@@ -513,7 +547,7 @@ window.CONFIG = {
   CONV_POLL_INTERVAL: 2400,
   REQUEST_POLL_INTERVAL: 3200,
   BACKUP_INTERVAL: Number(localStorage.getItem("viora.backupInterval") || 300000),
-  CONTACT_EMAIL: "",
+  CONTACT_EMAIL: "uskshayeem@gmail.com",
   BACKUP_KEY: "viora.autoBackup.v5",
   HEARTBEAT_INTERVAL: 25000,
   MAX_FILE_MB: 10,
@@ -685,7 +719,7 @@ const State = {
   conversations: [], requests: [], activeConvId: null, activePeer: null,
   messages: [], replyTo: null, tab: "chats", searchTerm: "",
   pollTimer: null, backupTimer: null, _lastHb: 0, _lastConvPoll: 0, _lastRequestPoll: 0, _pollBusy: false, _messagesKey: "", _convKey: "",
-  selectedMessages: new Set(), selectionMode: false, composerWired: false
+  selectedMessages: new Set(), selectionMode: false, composerWired: false, sendInFlight: 0, appLoading: false
 };
 
 /* ================================================================
@@ -769,7 +803,7 @@ function wireAuthUI() {
     openModal(`<button class="modal-close" data-close-modal>✕</button>
       <h2>Password recovery</h2>
       <p style="color:var(--text-muted);font-size:14px;line-height:1.7;margin-bottom:16px">
-        For password recovery, contact the Viora administrator.
+        If you forgot your password or need to change it, please contact the Viora administrator. We will help you recover your account.
         ${email ? `<br><a href="mailto:${H.esc(email)}" style="display:inline-block;margin-top:10px;font-weight:700;color:var(--brand)">${H.esc(email)}</a>` : '<br><b style="color:var(--brand)">Administrator contact is available from the app owner.</b>'}
       </p>
       <div class="modal-actions">${email ? `<a class="btn btn-primary" href="mailto:${H.esc(email)}" style="width:auto;padding:11px 22px">Email administrator</a>` : ''}<button class="btn btn-ghost" data-close-modal style="width:auto;padding:11px 22px">Close</button></div>`);
@@ -795,16 +829,29 @@ function wireAuthUI() {
    Main App
    ================================================================ */
 async function enterApp() {
+  const loading = document.getElementById("vioraChatLoading");
+  loading?.classList.add("show");
+  loading?.setAttribute("aria-hidden","false");
+  State.appLoading = true;
   document.getElementById("authScreen").classList.add("hidden");
   document.getElementById("appScreen").classList.remove("hidden");
   renderMe();
   if (!State.composerWired) { wireComposer(); State.composerWired = true; }
-  await Promise.all([loadConversations(), loadRequests()]);
-  autoBackupSnapshot();
-  startPolling();
-  startAutoBackup();
-  if("Notification" in window && Notification.permission==="default") { Notification.requestPermission().catch(()=>{}); }
-  API.call("heartbeat").catch(() => {});
+  try {
+    // Conversations and requests load in parallel; the window stays until both finish.
+    await Promise.all([loadConversations(), loadRequests()]);
+    autoBackupSnapshot();
+    startPolling();
+    startAutoBackup();
+    if("Notification" in window && Notification.permission==="default") { Notification.requestPermission().catch(()=>{}); }
+    API.call("heartbeat").catch(() => {});
+  } finally {
+    State.appLoading = false;
+    requestAnimationFrame(() => {
+      loading?.classList.remove("show");
+      loading?.setAttribute("aria-hidden","true");
+    });
+  }
 }
 function renderMe() {
   if (!currentUser) return;
@@ -820,7 +867,17 @@ function renderMe() {
 async function loadConversations() {
   const r = await API.call("getConversations");
   if (!r.success) return;
-  const next = r.data.conversations || [];
+  const next = (r.data.conversations || []).map(c => {
+    const out = {...c};
+    // If the conversation is currently open, its messages are considered seen locally.
+    if (State.activeConvId && out.conversationId === State.activeConvId) out.unreadCount = 0;
+    // Keep the home-screen tick synchronized with the same local status used in the open chat.
+    if (out.conversationId === State.activeConvId && out.lastMessageSenderId === currentUser?.userId && State.messages.length) {
+      const latestOut = [...State.messages].reverse().find(m => m.senderId === currentUser.userId);
+      if (latestOut) out.lastMessageStatus = messageStatus(latestOut);
+    }
+    return out;
+  });
   const key = JSON.stringify(next.map(c => [c.conversationId,c.lastMessage,c.lastActivity,c.unreadCount,c.lastMessageStatus,c.online,c.avatarUrl]));
   State.conversations = next;
   if ((State.tab === "chats" || State.tab === "friends") && key !== State._convKey) { State._convKey = key; renderList(); }
@@ -921,7 +978,7 @@ function renderList() {
         </div>
         <div class="li-bottom">
           <div class="li-last">${tickHtml} ${H.esc(c.lastMessage || 'Tap to start chatting')}</div>
-          ${c.unreadCount ? `<div class="li-unread">${c.unreadCount > 99 ? '99+' : c.unreadCount}</div>` : ''}
+          ${(c.unreadCount && c.conversationId !== State.activeConvId) ? `<div class="li-unread">${c.unreadCount > 99 ? '99+' : c.unreadCount}</div>` : ''}
         </div>
       </div>
     </div>`;
@@ -975,6 +1032,7 @@ async function openConversation(id) {
   if (!conv) return;
   State.activeConvId = id;
   State.activePeer = conv;
+  conv.unreadCount = 0;
   State.messages = [];
   State.replyTo = null;
   document.getElementById("chatEmpty").classList.add("hidden");
@@ -990,6 +1048,10 @@ async function openConversation(id) {
   status.textContent = conv.online ? "online" : "last seen " + H.timeAgo(conv.lastSeen);
   renderList();
   await loadMessages();
+  // Clear the badge immediately after the chat is actually opened.
+  conv.unreadCount = 0;
+  State.conversations = State.conversations.map(c => c.conversationId === id ? {...c, unreadCount:0} : c);
+  renderList();
   startPolling();
   if (window.innerWidth > 820) document.getElementById("messageInput").focus();
   const last = State.messages[State.messages.length - 1];
@@ -1014,23 +1076,36 @@ async function notifyIncomingMessage(m){
 
 async function loadMessages() {
   if (!State.activeConvId) return;
-  const r = await API.call("getMessages", { conversationId: State.activeConvId, limit: CONFIG.MESSAGES_PAGE });
+  const activeId = State.activeConvId;
+  const before = State.messages.slice();
+  const r = await API.call("getMessages", { conversationId: activeId, limit: CONFIG.MESSAGES_PAGE });
+  // Ignore a late response if the user already moved to another chat.
+  if (State.activeConvId !== activeId) return;
   if (!r.success) return;
   const next = r.data.messages || [];
-  const previousIds = new Set(State.messages.map(m=>String(m.messageId)));
-  const pending = State.messages.filter(m => String(m.messageId).startsWith("tmp_") && (m.status === "sending" || m.status === "uploading"));
+  const previousIds = new Set(before.map(m=>String(m.messageId)));
+  const pending = before.filter(m => String(m.messageId).startsWith("tmp_") && (m.status === "sending" || m.status === "uploading"));
   next.filter(m=>!previousIds.has(String(m.messageId)) && m.senderId!==currentUser.userId).forEach(notifyIncomingMessage);
   const serverIds = new Set(next.map(m => String(m.messageId)));
   const stillPending = pending.filter(m => !serverIds.has(String(m.messageId)) && !next.some(n => n.senderId===m.senderId && n.text===m.text && Math.abs(new Date(n.timestamp)-new Date(m.timestamp))<10000));
-  const merged = [...next, ...stillPending].sort((a,b) => new Date(a.timestamp)-new Date(b.timestamp));
-  const key = JSON.stringify(merged.map(m => [m.messageId,m.status,m.text,m.timestamp,m.deletedForEveryone,m.editedAt,m.fileUrl]));
+
+  // Some Apps Script/Sheets reads can briefly return a partial page while a send is being written.
+  // Never throw away messages already visible in the chat during that short window.
+  const oldReal = before.filter(m => !String(m.messageId).startsWith("tmp_"));
+  const responseLooksPartial = next.length < oldReal.length && (State.sendInFlight > 0 || pending.length > 0);
+  const byId = new Map(next.map(m => [String(m.messageId), m]));
+  if (responseLooksPartial) oldReal.forEach(m => { if (!byId.has(String(m.messageId))) byId.set(String(m.messageId), m); });
+  stillPending.forEach(m => { if (!byId.has(String(m.messageId))) byId.set(String(m.messageId), m); });
+  const merged = [...byId.values()].sort((a,b) => new Date(a.timestamp)-new Date(b.timestamp));
+  const key = JSON.stringify(merged.map(m => [m.messageId,m.status,m.text,m.timestamp,m.deletedForEveryone,m.editedAt,m.fileUrl,m.readAt,m.deliveredAt,m.seen]));
   if (key === State._messagesKey) return;
   const w = document.getElementById("messagesWrap");
-  const nearBottom = w ? (w.scrollHeight - w.scrollTop - w.clientHeight < 180) : true;
+  const wasNearBottom = w ? (w.scrollHeight - w.scrollTop - w.clientHeight < 180) : true;
   State.messages = merged;
   State._messagesKey = key;
-  renderMessages(nearBottom || stillPending.length > 0);
+  renderMessages(wasNearBottom || stillPending.length > 0);
 }
+
 function renderMessages(forceBottom = false) {
   const me = currentUser.userId;
   const wrap = document.getElementById("messages");
@@ -1182,6 +1257,7 @@ async function sendText(text) {
   const form = document.getElementById("composer");
   if (form.dataset.sending === "1") return;
   form.dataset.sending = "1";
+  State.sendInFlight = (State.sendInFlight || 0) + 1;
   const tempId = "tmp_" + Date.now() + Math.random().toString(36).slice(2,6);
   const replyId = State.replyTo ? State.replyTo.messageId : null;
   State.messages.push({ messageId: tempId, senderId: currentUser.userId, senderName: currentUser.fullName, messageType: "text", text, timestamp: new Date().toISOString(), status: "sending", reactions: {}, replyTo: State.replyTo ? { messageId: replyId, senderName: State.replyTo.senderId === currentUser.userId ? "You" : State.replyTo.senderName, preview: (State.replyTo.text||"").slice(0,60) } : null });
@@ -1192,14 +1268,24 @@ async function sendText(text) {
     if (r.success && i > -1) State.messages[i] = r.data?.message ? { ...r.data.message, status: r.data.message.status || "sent" } : { ...State.messages[i], status:"sent" };
     else if (i > -1) State.messages[i].status = "failed";
     State._messagesKey = ""; renderMessages(true);
-    if (r.success) { loadConversations(); autoBackupSnapshot(); }
-    else toast(r.message || "Message failed", "error");
-  } finally { form.dataset.sending = ""; }
+    if (r.success) {
+      const conv = State.conversations.find(c => c.conversationId === State.activeConvId);
+      const local = State.messages.find(x => x.messageId === tempId) || (r.data?.message);
+      if (conv && local) {
+        conv.lastMessageStatus = messageStatus(local);
+        conv.lastMessageSenderId = currentUser.userId;
+        conv.lastMessage = text;
+        conv.unreadCount = 0;
+      }
+      loadConversations(); autoBackupSnapshot();
+    } else toast(r.message || "Message failed", "error");
+  } finally { State.sendInFlight = Math.max(0,(State.sendInFlight||1)-1); form.dataset.sending = ""; }
 }
 function inputReset(){ const input=document.getElementById("messageInput"); input.value=""; autoResize(); updateSendButton(); }
 async function sendFile(file) {
   if (!file || !State.activeConvId) return;
   if (file.size > CONFIG.MAX_FILE_MB * 1024 * 1024) { toast(`File too large (max ${CONFIG.MAX_FILE_MB} MB)`, "error"); return; }
+  State.sendInFlight = (State.sendInFlight || 0) + 1;
   const isImage = file.type.startsWith("image/");
   const isVideo = file.type.startsWith("video/");
   const tempId = "tmp_file_" + Date.now();
@@ -1218,9 +1304,14 @@ async function sendFile(file) {
     if(r.success && i>-1){ State.messages[i]=r.data?.message?{...r.data.message,status:r.data.message.status||"sent"}:{...State.messages[i],fileUrl:up.data.fileUrl,status:"sent"}; }
     else if(i>-1) State.messages[i].status="failed";
     State._messagesKey=""; renderMessages(true);
-    if(r.success){loadConversations();autoBackupSnapshot();} else toast(r.message||"Send failed","error");
+    if(r.success){
+      const conv=State.conversations.find(c=>c.conversationId===State.activeConvId);
+      const local=State.messages.find(x=>x.messageId===tempId) || r.data?.message;
+      if(conv && local){ conv.lastMessageStatus=messageStatus(local); conv.lastMessageSenderId=currentUser.userId; conv.lastMessage="📎 Attachment"; conv.unreadCount=0; }
+      loadConversations();autoBackupSnapshot();
+    } else toast(r.message||"Send failed","error");
   }catch(e){ const i=State.messages.findIndex(x=>x.messageId===tempId); if(i>-1) State.messages[i].status="failed"; State._messagesKey=""; renderMessages(true); toast(e.message||"Upload failed","error"); }
-  finally { if(previewUrl) setTimeout(()=>URL.revokeObjectURL(previewUrl),60000); cancelReply(); }
+  finally { State.sendInFlight=Math.max(0,(State.sendInFlight||1)-1); if(previewUrl) setTimeout(()=>URL.revokeObjectURL(previewUrl),60000); cancelReply(); }
 }
 function fileToBase64(f) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = rej; r.readAsDataURL(f); }); }
 function compressImage(file) {
@@ -1288,11 +1379,20 @@ function openMediaPreview(file){
   const isImage=file.type.startsWith("image/");
   const url=URL.createObjectURL(file);
   if(isImage){
-    openModal(`<button class="modal-close" data-close-modal>✕</button><h2>Preview photo</h2><img id="mediaPreviewImg" class="preview-image" src="${url}"><div class="preview-tools"><label style="font-size:12px;color:var(--text-muted)">Brightness</label><input id="previewBright" type="range" min="70" max="130" value="100"><span id="brightVal">100%</span></div><div class="modal-actions"><button class="btn btn-ghost" id="previewCancel">Cancel</button><button class="btn btn-primary" id="previewSend">Send photo</button></div>`);
+    let sendFileObj=file;
+    openModal(`<button class="modal-close" data-close-modal>✕</button><h2>Preview photo</h2><img id="mediaPreviewImg" class="preview-image" src="${url}"><button type="button" class="v9-crop-btn" id="previewCrop">✂️ Crop photo</button><div class="preview-tools"><label style="font-size:12px;color:var(--text-muted)">Brightness</label><input id="previewBright" type="range" min="70" max="130" value="100"><span id="brightVal">100%</span></div><div class="modal-actions"><button class="btn btn-ghost" id="previewCancel">Cancel</button><button class="btn btn-primary" id="previewSend">Send photo</button></div>`);
     const img=document.getElementById("mediaPreviewImg"), slider=document.getElementById("previewBright"), val=document.getElementById("brightVal");
     slider.oninput=()=>{val.textContent=slider.value+"%";img.style.filter=`brightness(${slider.value}%)`;};
+    document.getElementById("previewCrop").onclick=()=>{
+      openCropper(sendFileObj, croppedBase64=>{
+        const raw=atob(croppedBase64), bytes=new Uint8Array(raw.length); for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);
+        sendFileObj=new File([bytes], file.name.replace(/\.[^.]+$/i,"")+"-cropped.jpg", {type:"image/jpeg"});
+        img.src=URL.createObjectURL(sendFileObj);
+        toast("Crop applied","success");
+      });
+    };
     document.getElementById("previewCancel").onclick=()=>{closeModal();URL.revokeObjectURL(url)};
-    document.getElementById("previewSend").onclick=()=>{closeModal();sendFile(file,{brightness:Number(slider.value)});URL.revokeObjectURL(url)};
+    document.getElementById("previewSend").onclick=()=>{closeModal();sendFile(sendFileObj);URL.revokeObjectURL(url)};
   } else {
     openModal(`<button class="modal-close" data-close-modal>✕</button><h2>File preview</h2><div class="preview-file"><b>${H.esc(file.name)}</b><div class="opt-sub">${(file.size/1024).toFixed(1)} KB · ${H.esc(file.type||"File")}</div></div><div class="modal-actions"><button class="btn btn-ghost" id="previewCancel">Cancel</button><button class="btn btn-primary" id="previewSend">Send file</button></div>`);
     document.getElementById("previewCancel").onclick=closeModal; document.getElementById("previewSend").onclick=()=>{closeModal();sendFile(file)};
@@ -1488,8 +1588,8 @@ function openPrivacyModal(){
   document.querySelectorAll("[data-privacy]").forEach(el=>el.value=p[el.dataset.privacy]||"everyone");
   ["avatar","about","online"].forEach(k=>{
     const picker=document.querySelector(`[data-picker="${k}"]`), btn=document.querySelector(`[data-pick="${k}"]`), select=document.querySelector(`[data-privacy="${k}"]`);
-    picker.innerHTML=friends.length?friends.map(u=>`<label><input type="checkbox" value="${H.esc(u.userId)}" ${selected[k].has(u.userId)?"checked":""}><span><b>${H.esc(u.fullName)}</b><small style="display:block;color:var(--text-muted)">@${H.esc(u.username)}</small></span></label>`).join(""):`<div class="opt-sub">Add friends first to choose specific people.</div>`;
-    const sync=()=>{const is=select.value==="selected";btn.classList.toggle("show",is);picker.hidden=!is;picker.querySelectorAll("input").forEach(i=>i.onchange=()=>{selected[k][i.checked?"add":"delete"](i.value);updateCount()});updateCount()};
+    const renderPicker=()=>{ picker.innerHTML=friends.length?friends.map(u=>`<label><input type="checkbox" value="${H.esc(u.userId)}" ${selected[k].has(u.userId)?"checked":""}><span><b>${H.esc(u.fullName)}</b><small style="display:block;color:var(--text-muted)">@${H.esc(u.username)}</small></span></label>`).join(""):`<div class="opt-sub">Add friends first to choose specific people.</div>`; picker.querySelectorAll("input").forEach(i=>i.onchange=()=>{selected[k][i.checked?"add":"delete"](i.value);updateCount()}); };
+    const sync=()=>{const is=select.value==="selected";btn.classList.toggle("show",is);picker.hidden=!is;if(is)renderPicker();updateCount()};
     const updateCount=()=>{const c=picker.querySelectorAll("input:checked").length;btn.querySelector(`[data-selected-count="${k}"]`).textContent=`${c} selected`};
     btn.onclick=()=>{picker.hidden=!picker.hidden};
     select.onchange=sync; sync();
