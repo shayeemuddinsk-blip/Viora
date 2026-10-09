@@ -819,7 +819,7 @@ async function restoreLocalCache(){
     const cs=await localGetAll("conversations"), rs=await localGetAll("requests");
     if(cs.length) { State.conversations=cs; State._convKey=""; renderList(); }
     if(rs.length) { State.requests=rs; updateRequestBadges(); if(State.tab==="requests") renderList(); }
-    if(State.activeConvId){ const all=await localGetAll("messages"); const ms=all.filter(m=>m.conversationId===State.activeConvId).sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp)); if(ms.length){State.messages=ms;State._messagesKey="";renderMessages(true);} }
+    if(State.activeConvId){ const all=await localGetAll("messages"); const ms=all.filter(m=>m.conversationId===State.activeConvId&&!m._locallyDeleted).sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp)); if(ms.length){State.messages=ms;State._messagesKey="";renderMessages(true);} }
     return cs.length>0 || rs.length>0;
   }catch(e){console.warn("[local restore]",e);return false;}
 }
@@ -1299,7 +1299,7 @@ async function loadMessages() {
   const locallyDeleted=new Set(cachedAll.filter(m=>m._locallyDeleted).map(m=>String(m.messageId)));
   for (const id of locallyDeleted) merged.delete(id);
   cachedAll.filter(m=>m._pendingDeleteScope === "everyone").forEach(m=>merged.set(String(m.messageId),m));
-  for(const old of before){if(!locallyDeleted.has(String(old.messageId))&&!merged.has(String(old.messageId))&&!String(old.messageId).startsWith("tmp_"))merged.set(String(old.messageId),old);}
+  // Do not reinsert old State.messages that the server no longer returns; this caused deleted/cleared messages to resurrect.
   State.messages=[...merged.values()].filter(m=>!m._locallyDeleted).sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
   State._messagesKey="";renderMessages(false);
   for(const m of State.messages){if(!String(m.messageId).startsWith("tmp_"))await localPut("messages",m).catch(()=>{});}
@@ -1505,33 +1505,35 @@ async function removeMyReaction(m) {
   catch(_){await queueOfflineAction("removeReaction",{messageId:m.messageId}).catch(()=>{});}
 }
 async function delMsg(m, scope) {
+  if (!m || !m.messageId) return;
   const title=scope==="everyone"?"Delete for everyone?":"Delete for me?";
   const message=scope==="everyone"?"This message will be removed for everyone.":"This message will be removed from your view.";
   const ok=await confirmAction(title,message,scope==="everyone"?"Delete everyone":"Delete for me");
   if(!ok)return;
   const id=String(m.messageId), convId=m.conversationId||State.activeConvId;
-  // Immediate local deletion. A durable tombstone prevents stale polls from restoring it.
+  const tombstone={messageId:id,conversationId:convId,timestamp:m.timestamp||new Date().toISOString(),senderId:m.senderId,_locallyDeleted:true,_pendingDeleteScope:scope};
+  // Optimistic removal from every local view, and persist a tombstone so stale polling cannot restore it.
   State.messages=State.messages.filter(x=>String(x.messageId)!==id);
-  const tombstone={messageId:id,conversationId:convId,_locallyDeleted:true,_pendingDeleteScope:scope};
   await localPut("messages",tombstone).catch(()=>{});
   State._messagesKey=""; State._renderedMessagesSignature=null; renderMessages(false);
-  // Update the local chat-list preview immediately, before any network call.
   const conv=State.conversations.find(c=>String(c.conversationId)===String(convId));
-  if(conv){const prior=[...State.messages].filter(x=>String(x.conversationId)===String(convId)).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp))[0];conv.lastMessage=prior?(prior.text|| (prior.messageType==="image"?"📷 Photo":prior.messageType==="video"?"🎥 Video":"📎 File")):"";conv.lastMessageId=prior?.messageId||"";State._convKey="";renderList();}
-  // Fire-and-forget server sync; never block or redraw the deleted message while waiting.
-  const payload={messageId:m.messageId,scope};
-  if(!navigator.onLine){await queueOfflineAction("deleteMessage",payload).catch(()=>{});toast("Deleted on this device; sync will retry when online","success");return;}
-  API.call("deleteMessage",payload).then(async r=>{
+  if(conv){
+    const prior=[...State.messages].filter(x=>String(x.conversationId)===String(convId)).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp))[0];
+    conv.lastMessage=prior?(prior.text||(prior.messageType==="image"?"📷 Photo":prior.messageType==="video"?"🎥 Video":"📎 File")):"";
+    conv.lastMessageId=prior?.messageId||""; State._convKey=""; renderList();
+  }
+  const payload={messageId:id,scope};
+  const queue=async()=>{await queueOfflineAction("deleteMessage",payload).catch(()=>{});};
+  if(!navigator.onLine){await queue();toast("Deleted here; server sync will retry online","success");return;}
+  try{
+    const r=await API.call("deleteMessage",payload);
     if(r?.success){
-      // Keep the tombstone locally even after success: old cached/server pages must not resurrect it.
-      await localPut("messages",tombstone).catch(()=>{});
-      if(scope==="everyone") await loadConversations().catch(()=>{});
-    } else {
-      await queueOfflineAction("deleteMessage",payload).catch(()=>{});
-      console.warn("Delete sync pending:",r?.message||"server rejected delete");
-    }
-  }).catch(async()=>{await queueOfflineAction("deleteMessage",payload).catch(()=>{});});
-  toast(scope==="everyone"?"Message deleted for everyone":"Message deleted for you","success");
+      // Keep the tombstone until a fresh server response confirms the message is absent.
+      tombstone._pendingDeleteScope=scope; await localPut("messages",tombstone).catch(()=>{});
+      toast(scope==="everyone"?"Deleted for everyone":"Deleted for you","success");
+      if(scope==="everyone") loadConversations().catch(()=>{});
+    }else{await queue();toast("Removed from this screen; server retry queued","success");console.warn("Delete rejected:",r?.message);}
+  }catch(e){await queue();toast("Removed from this screen; server retry queued","success");}
 }
 
 async function sendText(text) {
@@ -1752,7 +1754,7 @@ function wireAppUI() {
     showMenuAt(buildMenu([
       { emoji: "👁️", label: "Contact info", action: openContactInfo },
       { emoji: "💾", label: "Backup chat", action: () => downloadBackup(conv.conversationId) },
-      { emoji: "🧹", label: "Clear chat", action: async () => { const ok=await confirmAction("Clear this chat?","All messages will be removed from your view.","Clear chat"); if (!ok) return; const cid=conv.conversationId; const all=await localGetAll("messages").catch(()=>[]); for(const m of all.filter(x=>String(x.conversationId)===String(cid))) await localDelete("messages",m.messageId).catch(()=>{}); if(State.activeConvId===cid){State.messages=[];State._renderedMessagesSignature=null;renderMessages(false);} const r=navigator.onLine?await API.call("clearChat", { conversationId: cid }):{success:false}; if(!r.success)await queueOfflineAction("clearChat",{conversationId:cid}).catch(()=>{}); toast("Chat cleared on this device"+(r.success?"":"; server sync queued"),"success"); } }
+      { emoji: "🧹", label: "Clear chat", action: async () => { const ok=await confirmAction("Clear this chat?","All messages will be removed from your view.","Clear chat"); if (!ok) return; const cid=conv.conversationId; const all=await localGetAll("messages").catch(()=>[]); const mine=all.filter(x=>String(x.conversationId)===String(cid)&&!x._locallyDeleted); for(const m of mine){await localPut("messages",{messageId:String(m.messageId),conversationId:cid,timestamp:m.timestamp||new Date().toISOString(),senderId:m.senderId,_locallyDeleted:true,_pendingDeleteScope:"me"}).catch(()=>{});} if(State.activeConvId===cid){State.messages=[];State._messagesKey="";State._renderedMessagesSignature=null;renderMessages(false);} const r=navigator.onLine?await API.call("clearChat", { conversationId: cid }):{success:false}; if(!r?.success)await queueOfflineAction("clearChat",{conversationId:cid}).catch(()=>{}); toast("Chat cleared on this device"+(r?.success?"":"; server sync queued"),"success"); } }
     ]), e.currentTarget);
   });
   document.getElementById("selectionCancel")?.addEventListener("click", clearMessageSelection);
@@ -1767,15 +1769,27 @@ function toggleMessageSelection(id){ State.selectionMode=true; State.selectedMes
 function clearMessageSelection(){ State.selectedMessages.clear(); State.selectionMode=false; updateSelectionToolbar(); renderMessages(false); }
 function updateSelectionToolbar(){ const bar=document.getElementById("selectionToolbar"); if(!bar)return; const n=State.selectedMessages.size; bar.classList.toggle("hidden",!State.selectionMode); document.getElementById("selectionCount").textContent=`${n} selected`; }
 async function deleteSelected(scope){
-  const ids=[...State.selectedMessages]; if(!ids.length)return toast("Select at least one message","error");
+  const ids=[...State.selectedMessages].map(String); if(!ids.length)return toast("Select at least one message","error");
   if(scope==="everyone" && !(await confirmAction("Delete for everyone?","The selected messages will be removed for everyone if the server allows it.","Delete everyone")))return;
-  const btnId=scope==="me"?"selectionDeleteMe":"selectionDeleteEveryone"; const b=document.getElementById(btnId); b.disabled=true; b.innerHTML='<span class="action-spinner"></span> Deleting…';
-  try {
-    const results=await Promise.all(ids.map(id=>API.call("deleteMessage",{messageId:id,scope})));
-    const failed=results.filter(x=>!x.success).length;
-    if(failed) toast(`${failed} message(s) could not be deleted`,"error"); else toast("Messages deleted","success");
-    clearMessageSelection(); State._messagesKey=""; await Promise.all([loadMessages(),loadConversations()]);
-  } finally { b.disabled=false; b.textContent=scope==="me"?"Delete for me":"Delete everyone"; }
+  const btnId=scope==="me"?"selectionDeleteMe":"selectionDeleteEveryone", b=document.getElementById(btnId);
+  if(b){b.disabled=true;b.innerHTML='<span class="action-spinner"></span> Deleting…';}
+  try{
+    const all=await localGetAll("messages").catch(()=>[]), byId=new Map(all.map(m=>[String(m.messageId),m]));
+    const targets=ids.map(id=>byId.get(id)||State.messages.find(m=>String(m.messageId)===id)).filter(Boolean);
+    // Hide immediately and write durable tombstones before starting network requests.
+    State.messages=State.messages.filter(m=>!ids.includes(String(m.messageId)));
+    for(const m of targets) await localPut("messages",{messageId:String(m.messageId),conversationId:m.conversationId||State.activeConvId,timestamp:m.timestamp||new Date().toISOString(),senderId:m.senderId,_locallyDeleted:true,_pendingDeleteScope:scope}).catch(()=>{});
+    clearMessageSelection(); State._messagesKey=""; State._renderedMessagesSignature=null; renderMessages(false);
+    let failed=0;
+    for(const id of ids){
+      const payload={messageId:id,scope};
+      if(!navigator.onLine){await queueOfflineAction("deleteMessage",payload).catch(()=>{});failed++;continue;}
+      try{const r=await API.call("deleteMessage",payload);if(!r?.success){failed++;await queueOfflineAction("deleteMessage",payload).catch(()=>{});}}
+      catch(_){failed++;await queueOfflineAction("deleteMessage",payload).catch(()=>{});}
+    }
+    if(scope==="everyone")loadConversations().catch(()=>{});
+    toast(failed?`Removed locally; ${failed} deletion(s) queued for server sync`:"Messages deleted","success");
+  }finally{if(b){b.disabled=false;b.textContent=scope==="me"?"Delete for me":"Delete everyone";}}
 }
 
 function autoBackupSnapshot(){
