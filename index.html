@@ -1077,7 +1077,23 @@ async function loadConversations() {
   if(!navigator.onLine){ return restoreLocalCache(); }
   const r = await API.call("getConversations");
   if (!r.success) { await restoreLocalCache(); return; }
-  const hidden=hiddenConversationIds(); const next = (r.data.conversations || []).filter(c=>!hidden.has(String(c.conversationId))).map(c => {
+  const hidden=hiddenConversationIds(); const rawConversations=(r.data.conversations || []);
+  State._conversationNotificationBaseline=State._conversationNotificationBaseline||false;
+  State._lastNotifiedMessageByConv=State._lastNotifiedMessageByConv||{};
+  if(State._conversationNotificationBaseline){
+    rawConversations.forEach(c=>{
+      const cid=String(c.conversationId||""), mid=String(c.lastMessageId||"");
+      const previous=State._lastNotifiedMessageByConv[cid];
+      if(mid && previous!==undefined && mid!==previous && c.lastMessageSenderId!==currentUser?.userId && Number(c.unreadCount||0)>0){
+        notifyIncomingMessage({messageId:mid,senderId:c.lastMessageSenderId,senderName:c.name,text:c.lastMessage,messageType:c.lastMessageType||"text",senderAvatarUrl:c.avatarUrl});
+      }
+      if(mid)State._lastNotifiedMessageByConv[cid]=mid;
+    });
+  } else {
+    rawConversations.forEach(c=>{const cid=String(c.conversationId||""),mid=String(c.lastMessageId||"");if(mid)State._lastNotifiedMessageByConv[cid]=mid;});
+    State._conversationNotificationBaseline=true;
+  }
+  const next = rawConversations.filter(c=>!hidden.has(String(c.conversationId))).map(c => {
     const out = {...c};
     if (State.activeConvId && out.conversationId === State.activeConvId) out.unreadCount = 0;
     if (out.conversationId === State.activeConvId && out.lastMessageSenderId === currentUser?.userId && State.messages.length) {
@@ -1295,9 +1311,14 @@ window.addEventListener("popstate", () => {
   if (State.activeConvId && (!(hs && hs.vioraChatView) || String(hs.vioraConversationId||"") !== String(State.activeConvId))) closeChat(true);
 });
 async function notifyIncomingMessage(m){
-  if(!m || m.senderId===currentUser?.userId || document.visibilityState!=="visible") return;
+  if(!m || m.senderId===currentUser?.userId) return;
+  State._notifiedMessageIds=State._notifiedMessageIds||new Set();
+  const id=String(m.messageId||m.clientMessageId||"");
+  if(id && State._notifiedMessageIds.has(id)) return;
+  if(id) State._notifiedMessageIds.add(id);
+  // Notify only after a message is detected as new; this also works while the chat tab is visible.
   if("Notification" in window && Notification.permission==="granted") {
-    try { new Notification(m.senderName||"New message", {body:m.text || (m.messageType==="image"?"📷 Photo":"📎 Attachment"), icon: currentUser?.avatarUrl || ""}); } catch(e){}
+    try { new Notification(m.senderName||"New message", {body:m.text || (m.messageType==="image"?"📷 Photo":m.messageType==="video"?"🎥 Video":"📎 Attachment"), icon: m.senderAvatarUrl || currentUser?.avatarUrl || ""}); } catch(e){}
   }
 }
 
@@ -1314,7 +1335,13 @@ async function loadMessages() {
   let r; try { r=await API.call("getMessages",{conversationId:activeId,limit:CONFIG.MESSAGES_PAGE}); } catch(e) { return; }
   if(State.activeConvId!==activeId || !r?.success)return;
   const server=(r.data.messages||[]).filter(m=>!m.deletedForEveryone && !m._locallyDeleted);
-  server.filter(m=>!before.some(b=>String(b.messageId)===String(m.messageId)) && m.senderId!==currentUser.userId).forEach(notifyIncomingMessage);
+  State._seenMessageIdsByConv=State._seenMessageIdsByConv||{};
+  const baselineKey=String(currentUser?.userId||"")+"|"+String(activeId);
+  const seen=State._seenMessageIdsByConv[baselineKey] instanceof Set?State._seenMessageIdsByConv[baselineKey]:(State._seenMessageIdsByConv[baselineKey]=new Set());
+  if(seen.size){
+    server.filter(m=>m.messageId && !seen.has(String(m.messageId)) && m.senderId!==currentUser.userId).forEach(notifyIncomingMessage);
+  }
+  server.forEach(m=>{if(m.messageId)seen.add(String(m.messageId));});
   const fp=m=>`${m.senderId||""}|${m.messageType||"text"}|${String(m.text||"").trim()}|${m.fileName||""}`;
   const merged=new Map();
   // Server IDs are canonical. Keep local-only/pending rows unless matched to a server echo.
@@ -1338,10 +1365,30 @@ async function loadMessages() {
 }
 
 document.addEventListener("click", async e=>{const a=e.target.closest("a[data-photo-download]");if(!a)return;const url=a.dataset.fileUrl;if(!url)return;const id=(String(url).match(/(?:id=|\/d\/)([-_A-Za-z0-9]{20,})/)||[])[1];if(!id)return; e.preventDefault();const name=a.getAttribute("download")||"viora-photo.jpg";try{const res=await fetch(`https://drive.google.com/uc?export=download&id=${id}`,{mode:"cors",credentials:"omit"});if(!res.ok)throw new Error("download");const blob=await res.blob();const temp=document.createElement("a");temp.href=URL.createObjectURL(blob);temp.download=name;document.body.appendChild(temp);temp.click();temp.remove();setTimeout(()=>URL.revokeObjectURL(temp.href),30000);}catch(_){const temp=document.createElement("a");temp.href=`https://drive.google.com/uc?export=download&id=${id}`;temp.download=name;temp.rel="noopener";document.body.appendChild(temp);temp.click();temp.remove();}},true);
+function currentMessageRenderSignature(){
+  return JSON.stringify(State.messages.map(m => [m.messageId,m.timestamp,m.senderId,m.messageType,m.text,m.fileUrl,m.fileName,m.status,m.readAt,m.deliveredAt,m.editedAt,!!m.deletedForEveryone,m.reactions,m.replyTo]));
+}
+function patchSentMessageRow(oldId, message){
+  const wrap=document.getElementById("messages");
+  const row=wrap?.querySelector(`[data-message-id="${CSS.escape(String(oldId))}"]`);
+  if(!row || !message) return false;
+  const oldText=row.querySelector(".text")?.textContent || "";
+  if(message.messageType==="text" && oldText!==String(message.text||"")) return false;
+  row.dataset.messageId=String(message.messageId||oldId);
+  row.classList.toggle("pending", message.status==="sending" || message.status==="uploading");
+  row.classList.toggle("failed", message.status==="failed");
+  const meta=row.querySelector(".meta");
+  if(meta){
+    const editedLabel=message.editedAt?'<span class="edited-label">edited</span>':'';
+    meta.innerHTML=editedLabel+H.timeOnly(message.timestamp)+' '+(message.senderId===currentUser.userId?renderTicks(messageStatus(message)):"");
+  }
+  State._renderedMessagesSignature=currentMessageRenderSignature();
+  return true;
+}
 function renderMessages(forceBottom = false) {
   const me = currentUser.userId;
   const wrap = document.getElementById("messages");
-  const signature = JSON.stringify(State.messages.map(m => [m.messageId,m.timestamp,m.senderId,m.messageType,m.text,m.fileUrl,m.fileName,m.status,m.readAt,m.deliveredAt,m.editedAt,!!m.deletedForEveryone,m.reactions,m.replyTo]));
+  const signature = currentMessageRenderSignature();
   if (!forceBottom && State._renderedMessagesSignature === signature && wrap.childElementCount) return;
   let lastDate = null, html = "";
   // Informational system notice: UI-only, not a fake message and not stored on the server.
@@ -1579,9 +1626,15 @@ async function sendText(text) {
   try{
     if(!navigator.onLine){ await queueOfflineAction("sendMessage",payload,localMessage); toast("Saved offline — will send when you’re back online","success"); return; }
     const r=await API.call("sendMessage",payload), i=State.messages.findIndex(x=>x.messageId===tempId);
-    if(r.success&&i>-1){State.messages[i]=r.data?.message?{...r.data.message,status:r.data.message.status||"sent"}:{...State.messages[i],status:"sent"};await localDelete("messages",tempId);await localPut("messages",{...State.messages[i],conversationId:State.activeConvId});}
+    let patchedInPlace=false;
+    if(r.success&&i>-1){
+      const previous=State.messages[i];
+      State.messages[i]=r.data?.message?{...previous,...r.data.message,status:r.data.message.status||"sent"}:{...previous,status:"sent"};
+      patchedInPlace=patchSentMessageRow(tempId,State.messages[i]);
+      await localDelete("messages",tempId);await localPut("messages",{...State.messages[i],conversationId:State.activeConvId});
+    }
     else if(i>-1){State.messages[i].status="failed";await localPut("messages",State.messages[i]);}
-    State._messagesKey="";renderMessages(false);
+    State._messagesKey="";if(!patchedInPlace)renderMessages(false);
     if(r.success){const conv=State.conversations.find(c=>c.conversationId===State.activeConvId);const local=State.messages.find(x=>x.messageId===tempId)||r.data?.message;if(conv&&local){conv.lastMessageStatus=messageStatus(local);conv.lastMessageSenderId=currentUser.userId;conv.lastMessage=text;conv.unreadCount=0;}if(window.VioraHybrid) window.VioraHybrid.publish({type:"message:new",conversationId:State.activeConvId,messageId:local?.messageId||tempId,senderId:currentUser.userId,clientMessageId:tempId});loadConversations();autoBackupSnapshot();}else toast(r.message||"Message failed","error");
   }catch(e){await queueOfflineAction("sendMessage",payload,localMessage);toast("Connection lost — message saved and will send automatically","default");}
   finally{State.sendInFlight=Math.max(0,(State.sendInFlight||1)-1);form.dataset.sending="";}
