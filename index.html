@@ -852,11 +852,11 @@ async function syncOfflineQueue(){
         }else r=await API.call(item.action,item.payload);
         if(r.success){
           await localDelete("queue",item.queueId);
-          if(item.action === "removeReaction" && item.payload?.messageId){const rm=await localGet("messages",String(item.payload.messageId)).catch(()=>null);if(rm){delete rm._pendingReactionRemoval;await localPut("messages",rm).catch(()=>{});}}
+          if((item.action === "removeReaction" || item.action === "addReaction") && item.payload?.messageId){const rm=await localGet("messages",String(item.payload.messageId)).catch(()=>null);if(rm){delete rm._pendingReactionRemoval;delete rm._pendingReactionSync;await localPut("messages",rm).catch(()=>{});}}
           if(item.action === "deleteMessage" && item.payload?.messageId) {
             const tomb=await localGet("messages",String(item.payload.messageId)).catch(()=>null);
-            if(tomb && item.payload.scope === "me") await localDelete("messages",String(item.payload.messageId)).catch(()=>{});
-            else if(tomb && item.payload.scope === "everyone") { delete tomb._pendingDeleteScope; await localPut("messages",tomb).catch(()=>{}); }
+            if(tomb) { tomb._locallyDeleted=true; delete tomb._pendingDeleteScope; await localPut("messages",tomb).catch(()=>{}); }
+            State.messages=State.messages.filter(m=>String(m.messageId)!==String(item.payload.messageId));
           }
           if(item.clientMessageId){ const old=await localGet("messages",item.clientMessageId); const msg=r.data?.message; if(msg) await localDelete("messages",item.clientMessageId); if(msg) await localPut("messages",{...msg,conversationId:item.payload.conversationId,status:msg.status||"sent"}); else if(old) await localPut("messages",{...old,status:"sent"}); }
         }
@@ -1283,12 +1283,12 @@ async function loadMessages() {
   const before=State.messages.filter(m=>!m._locallyDeleted);
   let r; try { r=await API.call("getMessages",{conversationId:activeId,limit:CONFIG.MESSAGES_PAGE}); } catch(e) { return; }
   if(State.activeConvId!==activeId || !r?.success)return;
-  const server=(r.data.messages||[]);
+  const server=(r.data.messages||[]).filter(m=>!m.deletedForEveryone && !m._locallyDeleted);
   server.filter(m=>!before.some(b=>String(b.messageId)===String(m.messageId)) && m.senderId!==currentUser.userId).forEach(notifyIncomingMessage);
   const fp=m=>`${m.senderId||""}|${m.messageType||"text"}|${String(m.text||"").trim()}|${m.fileName||""}`;
   const merged=new Map();
   // Server IDs are canonical. Keep local-only/pending rows unless matched to a server echo.
-  server.forEach(m=>{ const local=cachedAll.find(x=>String(x.messageId)===String(m.messageId)); if(local?._pendingReactionRemoval){m={...m,reactions:local.reactions||{},_pendingReactionRemoval:true};} merged.set(String(m.messageId),m); });
+  server.forEach(m=>{ const local=cachedAll.find(x=>String(x.messageId)===String(m.messageId)); if(local?._pendingReactionRemoval || local?._pendingReactionSync){m={...m,reactions:local.reactions||{},_pendingReactionRemoval:!!local._pendingReactionRemoval,_pendingReactionSync:!!local._pendingReactionSync};} merged.set(String(m.messageId),m); });
   const locals=[...cached,...before].filter(m=>String(m.messageId).startsWith("tmp_") || m.status==="pending" || m.status==="sending" || m.status==="uploading");
   for(const local of locals){
     if(local._locallyDeleted)continue;
@@ -1442,17 +1442,17 @@ function bindMessageEvents() {
   });
 }
 function openMessageMenu(messageId, rowEl) {
-  const m = State.messages.find(x => x.messageId === messageId);
+  const m = State.messages.find(x => String(x.messageId) === String(messageId));
   if (!m) return;
   const isMine = m.senderId === currentUser.userId;
   const items = [
     { label: "Reply", emoji: "↩️", fn: () => startReply(m) },
     { label: "Select", emoji: "☑️", fn: () => toggleMessageSelection(m.messageId) },
     { label: "Copy", emoji: "📋", fn: () => { navigator.clipboard.writeText(m.text||"").then(() => toast("Copied", "success")); } },
-    { label: "React ❤️", emoji: "❤️", fn: () => API.call("addReaction", { messageId, reaction: "❤️" }).then(loadMessages) },
-    { label: "React 👍", emoji: "👍", fn: () => API.call("addReaction", { messageId, reaction: "👍" }).then(loadMessages) },
-    { label: "React 😂", emoji: "😂", fn: () => API.call("addReaction", { messageId, reaction: "😂" }).then(loadMessages) },
-    ...(m.reactions && Object.values(m.reactions).some(users => Array.isArray(users) ? users.map(String).includes(String(currentUser.userId)) : false) ? [{ label: "Remove my reaction", emoji: "↩️", fn: async () => { const uid=String(currentUser.userId); const old=m.reactions||{}; const next={}; Object.entries(old).forEach(([emoji,users])=>{const arr=Array.isArray(users)?users.filter(u=>String(u)!==uid):[];if(arr.length)next[emoji]=arr;}); m.reactions=next; m._pendingReactionRemoval=true; State._renderedMessagesSignature=null; await localPut("messages",m).catch(()=>{}); renderMessages(false); const rr=navigator.onLine?await API.call("removeReaction", { messageId }):{success:false}; if(rr.success){delete m._pendingReactionRemoval; await localPut("messages",m).catch(()=>{});toast("Reaction removed","success");}else{await queueOfflineAction("removeReaction",{messageId}).catch(()=>{});toast("Reaction removed","success");} } }] : []),
+    { label: "React ❤️", emoji: "❤️", fn: () => applyReaction(m, "❤️") },
+    { label: "React 👍", emoji: "👍", fn: () => applyReaction(m, "👍") },
+    { label: "React 😂", emoji: "😂", fn: () => applyReaction(m, "😂") },
+    ...(m.reactions && Object.values(m.reactions).some(users => Array.isArray(users) ? users.map(String).includes(String(currentUser.userId)) : false) ? [{ label: "Remove my reaction", emoji: "↩️", fn: () => removeMyReaction(m) }] : []),
     ...(isMine && m.messageType === "text" && !m.deletedForEveryone ? [{ label: "Edit", emoji: "✏️", fn: () => editMsg(m) }] : []),
     { label: "Delete for me", emoji: "🗑️", danger: true, fn: () => delMsg(m, "me") },
     ...(isMine && !m.deletedForEveryone ? [{ label: "Delete for everyone", emoji: "❌", danger: true, fn: () => delMsg(m, "everyone") }] : [])
@@ -1483,30 +1483,55 @@ function editMsg(m) {
   if (t == null || t.trim() === m.text) return;
   API.call("editMessage", { messageId: m.messageId, text: t.trim() }).then(loadMessages);
 }
+async function applyReaction(m, emoji) {
+  if (!m || m._locallyDeleted || m.deletedForEveryone) return;
+  const uid=String(currentUser.userId), next={...(m.reactions||{})};
+  const users=Array.isArray(next[emoji])?next[emoji].map(String):[];
+  if(!users.includes(uid)) users.push(uid);
+  next[emoji]=users; m.reactions=next; m._pendingReactionSync=true;
+  State._renderedMessagesSignature=null; await localPut("messages",m).catch(()=>{}); renderMessages(false);
+  if(!navigator.onLine){await queueOfflineAction("addReaction",{messageId:m.messageId,reaction:emoji}).catch(()=>{});return;}
+  try { const r=await API.call("addReaction",{messageId:m.messageId,reaction:emoji}); if(r?.success){delete m._pendingReactionSync;await localPut("messages",m).catch(()=>{});} else await queueOfflineAction("addReaction",{messageId:m.messageId,reaction:emoji}).catch(()=>{}); }
+  catch(_){await queueOfflineAction("addReaction",{messageId:m.messageId,reaction:emoji}).catch(()=>{});}
+}
+async function removeMyReaction(m) {
+  if (!m || m._locallyDeleted) return;
+  const uid=String(currentUser.userId), next={};
+  Object.entries(m.reactions||{}).forEach(([emoji,users])=>{const arr=Array.isArray(users)?users.filter(u=>String(u)!==uid):[];if(arr.length)next[emoji]=arr;});
+  m.reactions=next; m._pendingReactionRemoval=true;
+  State._renderedMessagesSignature=null; await localPut("messages",m).catch(()=>{}); renderMessages(false);
+  if(!navigator.onLine){await queueOfflineAction("removeReaction",{messageId:m.messageId}).catch(()=>{});return;}
+  try { const r=await API.call("removeReaction",{messageId:m.messageId}); if(r?.success){delete m._pendingReactionRemoval;await localPut("messages",m).catch(()=>{});} else await queueOfflineAction("removeReaction",{messageId:m.messageId}).catch(()=>{}); }
+  catch(_){await queueOfflineAction("removeReaction",{messageId:m.messageId}).catch(()=>{});}
+}
 async function delMsg(m, scope) {
   const title=scope==="everyone"?"Delete for everyone?":"Delete for me?";
   const message=scope==="everyone"?"This message will be removed for everyone.":"This message will be removed from your view.";
   const ok=await confirmAction(title,message,scope==="everyone"?"Delete everyone":"Delete for me");
   if(!ok)return;
-  const id=String(m.messageId);
-  if(scope === "everyone") {
-    const tombstone={...m,text:"",fileUrl:"",fileName:"",fileSize:0,reactions:{},deletedForEveryone:true,_pendingDeleteScope:"everyone"};
-    State.messages=State.messages.map(x=>String(x.messageId)===id?tombstone:x);
-    await localPut("messages",tombstone).catch(()=>{});
-  } else {
-    State.messages=State.messages.filter(x=>String(x.messageId)!==id);
-    // Keep a content-free tombstone so a stale server poll cannot resurrect the message.
-    await localPut("messages",{messageId:id,conversationId:m.conversationId||State.activeConvId,_locallyDeleted:true,_pendingDeleteScope:"me"}).catch(()=>{});
-  }
-  State._messagesKey=""; State._renderedMessagesSignature=null;
-  renderMessages(false);
-  const r = navigator.onLine ? await API.call("deleteMessage", { messageId: m.messageId, scope }) : {success:false,message:"Offline"};
-  if(r.success) {
-    if(scope === "me") await localDelete("messages",id).catch(()=>{});
-    else { const t=await localGet("messages",id).catch(()=>null); if(t){delete t._pendingDeleteScope;await localPut("messages",t).catch(()=>{});} }
-  } else await queueOfflineAction("deleteMessage",{messageId:m.messageId,scope}).catch(()=>{});
-  await loadConversations().catch(()=>{});
-  toast(r.success?"Message deleted":"Removed from this device; server sync queued",r.success?"success":"default");
+  const id=String(m.messageId), convId=m.conversationId||State.activeConvId;
+  // Immediate local deletion. A durable tombstone prevents stale polls from restoring it.
+  State.messages=State.messages.filter(x=>String(x.messageId)!==id);
+  const tombstone={messageId:id,conversationId:convId,_locallyDeleted:true,_pendingDeleteScope:scope};
+  await localPut("messages",tombstone).catch(()=>{});
+  State._messagesKey=""; State._renderedMessagesSignature=null; renderMessages(false);
+  // Update the local chat-list preview immediately, before any network call.
+  const conv=State.conversations.find(c=>String(c.conversationId)===String(convId));
+  if(conv){const prior=[...State.messages].filter(x=>String(x.conversationId)===String(convId)).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp))[0];conv.lastMessage=prior?(prior.text|| (prior.messageType==="image"?"📷 Photo":prior.messageType==="video"?"🎥 Video":"📎 File")):"";conv.lastMessageId=prior?.messageId||"";State._convKey="";renderList();}
+  // Fire-and-forget server sync; never block or redraw the deleted message while waiting.
+  const payload={messageId:m.messageId,scope};
+  if(!navigator.onLine){await queueOfflineAction("deleteMessage",payload).catch(()=>{});toast("Deleted on this device; sync will retry when online","success");return;}
+  API.call("deleteMessage",payload).then(async r=>{
+    if(r?.success){
+      // Keep the tombstone locally even after success: old cached/server pages must not resurrect it.
+      await localPut("messages",tombstone).catch(()=>{});
+      if(scope==="everyone") await loadConversations().catch(()=>{});
+    } else {
+      await queueOfflineAction("deleteMessage",payload).catch(()=>{});
+      console.warn("Delete sync pending:",r?.message||"server rejected delete");
+    }
+  }).catch(async()=>{await queueOfflineAction("deleteMessage",payload).catch(()=>{});});
+  toast(scope==="everyone"?"Message deleted for everyone":"Message deleted for you","success");
 }
 
 async function sendText(text) {
