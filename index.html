@@ -276,7 +276,7 @@ img{max-width:100%;display:block}
 .selection-toolbar{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--panel);border-bottom:1px solid var(--border);box-shadow:var(--shadow-sm);z-index:6;flex-shrink:0}
 .selection-toolbar .sel-count{font-weight:700;flex:1}.selection-toolbar button{padding:8px 11px;border-radius:8px;background:var(--panel-2);font-size:12.5px;font-weight:600}.selection-toolbar button.danger{color:var(--danger)}
 .msg-row.selected .bubble{outline:2px solid var(--brand);box-shadow:0 0 0 4px rgba(16,185,129,.12)}
-.message-spinner{width:12px;height:12px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;display:inline-block;animation:vspin .65s linear infinite;vertical-align:-2px}.section-title-row{display:flex;align-items:center;justify-content:space-between;padding:12px 14px 8px;color:var(--text)}.section-sub{font-size:12px;color:var(--text-muted);margin-top:2px}.request-count-pill{background:var(--brand);color:#fff;border-radius:999px;padding:4px 9px;font-size:12px;font-weight:700}.mini-action{border:1px solid var(--border);background:var(--panel-2);padding:7px 10px;border-radius:9px;font-size:12px;font-weight:700}.backup-dot{width:7px;height:7px;border-radius:50%;background:var(--brand);display:inline-block;margin-right:5px}
+.message-spinner{width:12px;height:12px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;display:inline-block;animation:vspin .65s linear infinite;vertical-align:-2px}.section-title-row{display:flex;align-items:center;justify-content:space-between;padding:12px 14px 8px;color:var(--text)}.section-sub{font-size:12px;color:var(--text-muted);margin-top:2px}.request-count-pill{background:var(--brand);color:#fff;border-radius:999px;padding:4px 9px;font-size:12px;font-weight:700}.friend-requests-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 15px 12px;margin:0 0 4px;border-bottom:1px solid var(--border)}.friend-requests-heading .heading-title{font-size:14px;font-weight:750;letter-spacing:.1px;line-height:1.35}.friend-requests-heading .heading-sub{font-size:12px;color:var(--text-muted);margin-top:3px;line-height:1.4}.friend-requests-heading .heading-count{flex:0 0 auto;min-width:28px;height:28px;padding:0 8px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;background:var(--panel-2);border:1px solid var(--border);color:var(--text);font-size:12px;font-weight:750}.mini-action{border:1px solid var(--border);background:var(--panel-2);padding:7px 10px;border-radius:9px;font-size:12px;font-weight:700}.backup-dot{width:7px;height:7px;border-radius:50%;background:var(--brand);display:inline-block;margin-right:5px}
 .send-btn.sending{opacity:.9}
 @media(max-width:820px){.bubble{max-width:82%}.selection-toolbar{padding-bottom:calc(8px + env(safe-area-inset-bottom))}.app-layout{grid-template-columns:1fr}.sidebar{width:100%}.chat-panel{position:fixed;inset:0;z-index:20;transform:translateX(100%);transition:transform .22s ease}.chat-panel.open{transform:translateX(0)}.back-btn{display:grid}}
 
@@ -821,14 +821,26 @@ async function restoreLocalCache(){
     const cs=await localGetAll("conversations"), rs=await localGetAll("requests");
     if(cs.length) { State.conversations=cs; State._convKey=""; renderList(); }
     if(rs.length) { State.requests=rs; updateRequestBadges(); if(State.tab==="requests") renderList(); }
-    if(State.activeConvId){ const all=await localGetAll("messages"); const ms=all.filter(m=>m.conversationId===State.activeConvId&&!m._locallyDeleted).sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp)); if(ms.length){State.messages=ms;State._messagesKey="";renderMessages(true);} }
+    // Online: wait for the server's canonical history so stale optimistic sends do not flash.
+    // Offline: keep the cached conversation available.
+    if(State.activeConvId && !navigator.onLine){ const all=await localGetAll("messages"); const ms=all.filter(m=>String(m.conversationId)===String(State.activeConvId)&&!m._locallyDeleted).sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp)); if(ms.length){State.messages=ms;State._messagesKey="";renderMessages(true);} }
     return cs.length>0 || rs.length>0;
   }catch(e){console.warn("[local restore]",e);return false;}
 }
+function requestSeenStorageKey(){return "viora_seen_requests_"+String(currentUser?.userId||"guest");}
+function readSeenRequestIds(){try{return new Set(JSON.parse(localStorage.getItem(requestSeenStorageKey())||"[]").map(String));}catch{return new Set();}}
+function markRequestsSeen(){
+  const seen=readSeenRequestIds();
+  for(const req of (State.requests||[])) seen.add(String(req.requestId));
+  try{localStorage.setItem(requestSeenStorageKey(),JSON.stringify([...seen]));}catch{}
+  State.unseenRequestIds=new Set(); updateRequestBadges();
+}
 function updateRequestBadges(){
-  const count=(State.requests||[]).length, badge=document.getElementById("reqTabBadge"), notif=document.getElementById("notifBadge");
+  const badge=document.getElementById("reqTabBadge"), notif=document.getElementById("notifBadge");
   if(!badge||!notif)return;
-  if(count){badge.textContent=count;badge.classList.remove("hidden");notif.textContent=count;notif.classList.remove("hidden");}
+  const seen=readSeenRequestIds();
+  const unseen=(State.requests||[]).filter(r=>!seen.has(String(r.requestId))).length;
+  if(unseen){badge.textContent=unseen;badge.classList.remove("hidden");notif.textContent=unseen;notif.classList.remove("hidden");}
   else{badge.classList.add("hidden");notif.classList.add("hidden");}
 }
 async function queueOfflineAction(action,payload,localMessage,blob){
@@ -874,7 +886,7 @@ const State = {
   conversations: [], requests: [], activeConvId: null, activePeer: null,
   messages: [], replyTo: null, tab: "chats", searchTerm: "",
   pollTimer: null, backupTimer: null, _lastHb: 0, _lastConvPoll: 0, _lastRequestPoll: 0, _pollBusy: false, _messagesKey: "", _convKey: "",
-  selectedMessages: new Set(), selectionMode: false, composerWired: false, sendInFlight: 0, appLoading: false, syncingQueue: false, localReady: false
+  selectedMessages: new Set(), selectionMode: false, composerWired: false, sendInFlight: 0, appLoading: false, syncingQueue: false, localReady: false, unseenRequestIds: new Set()
 };
 
 /* ================================================================
@@ -1098,7 +1110,7 @@ function renderList() {
       wrap.innerHTML = `<div class="empty-state"><span class="em-icon">📬</span><div class="em-title">No pending requests</div>When someone sends you a friend request, it will appear here.</div>`;
       return;
     }
-    wrap.innerHTML = `<div class="section-title-row"><div><strong>Friend requests</strong><div class="section-sub">${State.requests.length} pending request${State.requests.length===1?'':'s'}</div></div></div>` + State.requests.map(r => `
+    wrap.innerHTML = `<div class="friend-requests-heading"><div><div class="heading-title">Friend requests</div><div class="heading-sub">Review requests and choose who to connect with</div></div><span class="heading-count">${State.requests.length}</span></div>` + State.requests.map(r => `
       <div class="list-item" data-req="${H.esc(r.requestId)}">
         <div class="avatar-wrap">
           ${H.avatarHtml(r)}
@@ -1296,7 +1308,7 @@ async function loadMessages() {
   const cachedAll=await localGetAll("messages").catch(()=>[]);
   const cached=cachedAll.filter(m=>m.conversationId===activeId && !m._locallyDeleted).sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
   if(State.activeConvId!==activeId)return;
-  if(cached.length && !State.messages.length){State.messages=cached;State._messagesKey="";renderMessages(false);}
+  // Do not flash an old optimistic/local message while online; render cache only offline.
   if(!navigator.onLine){if(cached.length){State.messages=cached;State._messagesKey="";renderMessages(false);}return;}
   const before=State.messages.filter(m=>!m._locallyDeleted);
   let r; try { r=await API.call("getMessages",{conversationId:activeId,limit:CONFIG.MESSAGES_PAGE}); } catch(e) { return; }
@@ -1307,7 +1319,9 @@ async function loadMessages() {
   const merged=new Map();
   // Server IDs are canonical. Keep local-only/pending rows unless matched to a server echo.
   server.forEach(m=>{ const local=cachedAll.find(x=>String(x.messageId)===String(m.messageId)); if(local?._pendingReactionRemoval || local?._pendingReactionSync){m={...m,reactions:local.reactions||{},_pendingReactionRemoval:!!local._pendingReactionRemoval,_pendingReactionSync:!!local._pendingReactionSync};} merged.set(String(m.messageId),m); });
-  const locals=[...cached,...before].filter(m=>String(m.messageId).startsWith("tmp_") || m.status==="pending" || m.status==="sending" || m.status==="uploading");
+  // Keep only genuinely unsent local messages. Old tmp_* records with status sent/failed
+  // must not reappear after reopening or refreshing the app.
+  const locals=[...new Map([...cached,...before].map(m=>[String(m.messageId),m])).values()].filter(m=>!m._locallyDeleted && (m.status==="pending" || m.status==="sending" || m.status==="uploading"));
   for(const local of locals){
     if(local._locallyDeleted)continue;
     const echoed=server.some(m=>(m.clientMessageId && m.clientMessageId===local.messageId) || (m.senderId===local.senderId && fp(m)===fp(local) && Math.abs(new Date(m.timestamp)-new Date(local.timestamp))<12000));
@@ -1733,6 +1747,7 @@ function wireAppUI() {
     document.querySelectorAll("#mainTabs button").forEach(x => x.classList.remove("active"));
     b.classList.add("active");
     State.tab = b.dataset.tab;
+    if(State.tab === "requests") markRequestsSeen();
     renderList();
   });
   document.getElementById("searchInput").addEventListener("input", e => {
