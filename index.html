@@ -395,6 +395,10 @@ html[data-theme="sunset"]{--bg:#241008;--panel:#35170d;--panel-2:#48200f;--borde
 .viora-pro-editor .crop-tool-btn{min-height:36px;font-weight:600;transition:transform .12s ease,background .12s ease}
 .viora-pro-editor .crop-tool-btn:active{transform:scale(.96)}
 @media(max-width:600px){.viora-adjust-grid{grid-template-columns:1fr}.viora-pro-editor .cropper-controls{padding-bottom:calc(14px + env(safe-area-inset-bottom))}}
+
+.chat-start-notice{display:flex;gap:10px;align-items:flex-start;max-width:620px;margin:14px auto 18px;padding:12px 14px;border:1px solid color-mix(in srgb,var(--brand) 28%,var(--border));border-radius:12px;background:color-mix(in srgb,var(--brand) 7%,var(--panel));color:var(--text-muted);font-size:12.5px;line-height:1.55;box-shadow:var(--shadow-xs)}
+.chat-start-notice strong{display:block;color:var(--text);font-size:13px;margin-bottom:3px}.chat-start-notice p{margin:0}.chat-start-notice b{color:var(--text)}.chat-start-lock{display:grid;place-items:center;flex:0 0 25px;width:25px;height:25px;border-radius:50%;background:var(--panel);color:var(--brand);font-weight:800}
+.avatar-crop-only .crop-aspect-row{display:none}.avatar-crop-only .crop-extra-row{display:none}.avatar-crop-only .viora-adjust-grid label:not(:first-child){display:none}.avatar-crop-only .viora-adjust-grid{display:block}.avatar-crop-only .cropper-controls{padding:14px 20px}.avatar-crop-only .crop-hint{font-size:12px}.avatar-crop-only .viora-editor-badge{display:none}
 </style>
 </head>
 <body>
@@ -843,6 +847,11 @@ async function syncOfflineQueue(){
         }else r=await API.call(item.action,item.payload);
         if(r.success){
           await localDelete("queue",item.queueId);
+          if(item.action === "deleteMessage" && item.payload?.messageId) {
+            const tomb=await localGet("messages",String(item.payload.messageId)).catch(()=>null);
+            if(tomb && item.payload.scope === "me") await localDelete("messages",String(item.payload.messageId)).catch(()=>{});
+            else if(tomb && item.payload.scope === "everyone") { delete tomb._pendingDeleteScope; await localPut("messages",tomb).catch(()=>{}); }
+          }
           if(item.clientMessageId){ const old=await localGet("messages",item.clientMessageId); const msg=r.data?.message; if(msg) await localDelete("messages",item.clientMessageId); if(msg) await localPut("messages",{...msg,conversationId:item.payload.conversationId,status:msg.status||"sent"}); else if(old) await localPut("messages",{...old,status:"sent"}); }
         }
       }catch(e){console.warn("[offline queue]",e);}
@@ -1079,7 +1088,7 @@ function renderList() {
     }).join("");
     wrap.querySelectorAll("[data-conv]").forEach(n => {
     n.addEventListener("click", () => openConversation(n.dataset.conv));
-    n.addEventListener("contextmenu", e => { e.preventDefault(); const c=State.conversations.find(x=>x.conversationId===n.dataset.conv); if(!c)return; showMenuAt(buildMenu([{emoji:"💬",label:"Open chat",action:()=>openConversation(c.conversationId)},{emoji:"🗑️",label:"Delete chat for me",danger:true,action:async()=>{if(!confirm("Delete this chat for you?"))return; const r=await API.call("clearChat",{conversationId:c.conversationId}); if(r.success){await loadMessages();await loadConversations();toast("Chat deleted","success")}else toast(r.message||"Could not delete chat","error");}}]),n); });
+    n.addEventListener("contextmenu", e => { e.preventDefault(); const c=State.conversations.find(x=>x.conversationId===n.dataset.conv); if(!c)return; showMenuAt(buildMenu([{emoji:"💬",label:"Open chat",action:()=>openConversation(c.conversationId)},{emoji:"🗑️",label:"Delete chat for me",danger:true,action:async()=>{if(!confirm("Delete this chat for you?"))return; const cid=c.conversationId; await hideConversationLocally(cid); if(State.activeConvId===cid){State._chatHistoryOpen=false;closeChat(true);} renderList(); const r=navigator.onLine?await API.call("clearChat",{conversationId:cid}):{success:false}; if(!r.success)await queueOfflineAction("clearChat",{conversationId:cid}).catch(()=>{}); toast("Chat removed from this device"+(r.success?"":"; server sync queued"),"success");}}]),n); });
   });
     wrap.querySelector("#friendsNewChat")?.addEventListener("click", openSearchUsersModal);
     return;
@@ -1133,8 +1142,13 @@ function renderList() {
         {emoji:"💬",label:"Open chat",action:()=>openConversation(c.conversationId)},
         {emoji:"🗑️",label:"Delete chat for me",danger:true,action:async()=>{
           if(!await confirmAction("Delete this chat?","This removes the conversation from your view.")) return;
-          const cid=c.conversationId; const r=await API.call("clearChat",{conversationId:cid});
-          if(r.success){ await hideConversationLocally(cid); if(State.activeConvId===cid)closeChat(); State.conversations=State.conversations.filter(x=>x.conversationId!==cid);State._convKey="";renderList();await loadConversations();toast("Chat deleted from your home list","success"); } else toast(r.message||"Could not delete chat","error");
+          const cid=c.conversationId;
+          await hideConversationLocally(cid);
+          if(State.activeConvId===cid) { State._chatHistoryOpen=false; closeChat(true); }
+          State.conversations=State.conversations.filter(x=>String(x.conversationId)!==String(cid));State._convKey="";renderList();
+          const r=navigator.onLine?await API.call("clearChat",{conversationId:cid}):{success:false};
+          if(!r.success) await queueOfflineAction("clearChat",{conversationId:cid}).catch(()=>{});
+          toast("Chat removed from this device"+(r.success?"":"; server sync queued"),"success");
         }}
       ]),n);
     });
@@ -1170,8 +1184,12 @@ async function declineRequest(requestId) {
 async function openConversation(id) {
   const conv = State.conversations.find(c => c.conversationId === id);
   if (!conv) return;
+  if (!State._chatHistoryOpen) {
+    try { history.pushState({ ...(history.state || {}), vioraChatView: true, vioraConversationId: id }, "", window.location.href); State._chatHistoryOpen = true; } catch(e) {}
+  }
   State.activeConvId = id;
   State.activePeer = conv;
+  State._renderedMessagesSignature = null;
   conv.unreadCount = 0;
   State.messages = [];
   State.replyTo = null;
@@ -1201,13 +1219,22 @@ async function openConversation(id) {
     await loadConversations();
   }
 }
-function closeChat() {
+function closeChat(fromPopState = false) {
+  if (!fromPopState && State._chatHistoryOpen) {
+    try { history.back(); return; } catch(e) {}
+  }
   stopPolling();
+  State._chatHistoryOpen = false;
   State.activeConvId = null; State.activePeer = null;
+  State._renderedMessagesSignature = null;
   document.getElementById("chatActive").classList.add("hidden");
   document.getElementById("chatEmpty").classList.remove("hidden");
   document.getElementById("chatPanel").classList.remove("open");
 }
+window.addEventListener("popstate", () => {
+  const hs=history.state;
+  if (State.activeConvId && (!(hs && hs.vioraChatView) || String(hs.vioraConversationId||"") !== String(State.activeConvId))) closeChat(true);
+});
 async function notifyIncomingMessage(m){
   if(!m || m.senderId===currentUser?.userId || document.visibilityState!=="visible") return;
   if("Notification" in window && Notification.permission==="granted") {
@@ -1239,8 +1266,10 @@ async function loadMessages() {
     const echoed=server.some(m=>(m.clientMessageId && m.clientMessageId===local.messageId) || (m.senderId===local.senderId && fp(m)===fp(local) && Math.abs(new Date(m.timestamp)-new Date(local.timestamp))<12000));
     if(!echoed && !merged.has(String(local.messageId)))merged.set(String(local.messageId),local);
   }
-  // Keep cached older rows if server pagination returns fewer rows; explicit local deletion markers win.
+  // Local deletion tombstones win over stale server responses until queued sync succeeds.
   const locallyDeleted=new Set(cachedAll.filter(m=>m._locallyDeleted).map(m=>String(m.messageId)));
+  for (const id of locallyDeleted) merged.delete(id);
+  cachedAll.filter(m=>m._pendingDeleteScope === "everyone").forEach(m=>merged.set(String(m.messageId),m));
   for(const old of before){if(!locallyDeleted.has(String(old.messageId))&&!merged.has(String(old.messageId))&&!String(old.messageId).startsWith("tmp_"))merged.set(String(old.messageId),old);}
   State.messages=[...merged.values()].filter(m=>!m._locallyDeleted).sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
   State._messagesKey="";renderMessages(false);
@@ -1250,7 +1279,11 @@ async function loadMessages() {
 function renderMessages(forceBottom = false) {
   const me = currentUser.userId;
   const wrap = document.getElementById("messages");
+  const signature = JSON.stringify(State.messages.map(m => [m.messageId,m.timestamp,m.senderId,m.messageType,m.text,m.fileUrl,m.fileName,m.status,m.editedAt,!!m.deletedForEveryone,m.reactions,m.replyTo]));
+  if (!forceBottom && State._renderedMessagesSignature === signature && wrap.childElementCount) return;
   let lastDate = null, html = "";
+  // Informational system notice: UI-only, not a fake message and not stored on the server.
+  if (State.activeConvId) html += `<div class="chat-start-notice" role="note"><div class="chat-start-lock">ⓘ</div><div><strong>Welcome to your conversation</strong><p>This is your private chat space. You can send messages and files, reply, react, edit your own text messages, or delete messages. Only share information you trust. <b>Messages are not end-to-end encrypted.</b></p></div></div>`;
   State.messages.forEach(m => {
     const dk = new Date(m.timestamp).toDateString();
     if (dk !== lastDate) {
@@ -1266,6 +1299,7 @@ function renderMessages(forceBottom = false) {
     html += renderMessageHtml(m, me);
   });
   wrap.innerHTML = html;
+  State._renderedMessagesSignature = signature;
   bindMessageEvents();
   updateSelectionToolbar();
   requestAnimationFrame(() => { const w = document.getElementById("messagesWrap"); if (forceBottom || w.scrollHeight - w.scrollTop - w.clientHeight < 160) w.scrollTop = w.scrollHeight; });
@@ -1388,7 +1422,7 @@ function openMessageMenu(messageId, rowEl) {
     { label: "React ❤️", emoji: "❤️", fn: () => API.call("addReaction", { messageId, reaction: "❤️" }).then(loadMessages) },
     { label: "React 👍", emoji: "👍", fn: () => API.call("addReaction", { messageId, reaction: "👍" }).then(loadMessages) },
     { label: "React 😂", emoji: "😂", fn: () => API.call("addReaction", { messageId, reaction: "😂" }).then(loadMessages) },
-    ...(m.reactions && Object.values(m.reactions).some(users => Array.isArray(users) ? users.map(String).includes(String(currentUser.userId)) : false) ? [{ label: "Remove my reaction", emoji: "↩️", fn: async () => { const rr=await API.call("removeReaction", { messageId }); if(rr.success){await loadMessages();toast("Reaction removed","success");}else toast(rr.message||"Reaction removal needs backend support","error"); } }] : []),
+    ...(m.reactions && Object.values(m.reactions).some(users => Array.isArray(users) ? users.map(String).includes(String(currentUser.userId)) : false) ? [{ label: "Remove my reaction", emoji: "↩️", fn: async () => { const uid=String(currentUser.userId); const old=m.reactions||{}; const next={}; Object.entries(old).forEach(([emoji,users])=>{const arr=Array.isArray(users)?users.filter(u=>String(u)!==uid):[];if(arr.length)next[emoji]=arr;}); m.reactions=next; State._renderedMessagesSignature=null; await localPut("messages",m).catch(()=>{}); renderMessages(false); const rr=navigator.onLine?await API.call("removeReaction", { messageId }):{success:false}; if(rr.success){toast("Reaction removed","success");}else{await queueOfflineAction("removeReaction",{messageId}).catch(()=>{});toast("Reaction removed here; server sync queued");} } }] : []),
     ...(isMine && m.messageType === "text" && !m.deletedForEveryone ? [{ label: "Edit", emoji: "✏️", fn: () => editMsg(m) }] : []),
     { label: "Delete for me", emoji: "🗑️", danger: true, fn: () => delMsg(m, "me") },
     ...(isMine && !m.deletedForEveryone ? [{ label: "Delete for everyone", emoji: "❌", danger: true, fn: () => delMsg(m, "everyone") }] : [])
@@ -1421,11 +1455,28 @@ function editMsg(m) {
 }
 async function delMsg(m, scope) {
   const title=scope==="everyone"?"Delete for everyone?":"Delete for me?";
-  const message=scope==="everyone"?"This message will be removed for everyone if the server supports it.":"This message will be removed from your view.";
+  const message=scope==="everyone"?"This message will be removed for everyone.":"This message will be removed from your view.";
   const ok=await confirmAction(title,message,scope==="everyone"?"Delete everyone":"Delete for me");
   if(!ok)return;
-  const r=await API.call("deleteMessage", { messageId: m.messageId, scope });
-  if(r.success){State._messagesKey="";await loadMessages();await loadConversations();toast("Message deleted","success");}else toast(r.message||"Could not delete message","error");
+  const id=String(m.messageId);
+  if(scope === "everyone") {
+    const tombstone={...m,text:"",fileUrl:"",fileName:"",fileSize:0,reactions:{},deletedForEveryone:true,_pendingDeleteScope:"everyone"};
+    State.messages=State.messages.map(x=>String(x.messageId)===id?tombstone:x);
+    await localPut("messages",tombstone).catch(()=>{});
+  } else {
+    State.messages=State.messages.filter(x=>String(x.messageId)!==id);
+    // Keep a content-free tombstone so a stale server poll cannot resurrect the message.
+    await localPut("messages",{messageId:id,conversationId:m.conversationId||State.activeConvId,_locallyDeleted:true,_pendingDeleteScope:"me"}).catch(()=>{});
+  }
+  State._messagesKey=""; State._renderedMessagesSignature=null;
+  renderMessages(false);
+  const r = navigator.onLine ? await API.call("deleteMessage", { messageId: m.messageId, scope }) : {success:false,message:"Offline"};
+  if(r.success) {
+    if(scope === "me") await localDelete("messages",id).catch(()=>{});
+    else { const t=await localGet("messages",id).catch(()=>null); if(t){delete t._pendingDeleteScope;await localPut("messages",t).catch(()=>{});} }
+  } else await queueOfflineAction("deleteMessage",{messageId:m.messageId,scope}).catch(()=>{});
+  await loadConversations().catch(()=>{});
+  toast(r.success?"Message deleted":"Removed from this device; server sync queued",r.success?"success":"default");
 }
 
 async function sendText(text) {
@@ -1560,7 +1611,7 @@ function wireComposer() {
   form.addEventListener("submit", e => { e.preventDefault(); const t = input.value.trim(); if (t && !form.dataset.sending) sendText(t); });
   updateSendButton();
   document.getElementById("cancelReply").addEventListener("click", cancelReply);
-  document.getElementById("btnBack").addEventListener("click", closeChat);
+  document.getElementById("btnBack").addEventListener("click", () => { if (State._chatHistoryOpen) history.back(); else closeChat(true); });
   document.getElementById("btnAttach").addEventListener("click", () => document.getElementById("fileInput").click());
   document.getElementById("btnPhoto").addEventListener("click", () => document.getElementById("photoInput").click());
   document.getElementById("photoInput").addEventListener("change", e => { const f=e.target.files[0]; if(f) openMediaPreview(f); e.target.value=""; });
@@ -1646,7 +1697,7 @@ function wireAppUI() {
     showMenuAt(buildMenu([
       { emoji: "👁️", label: "Contact info", action: openContactInfo },
       { emoji: "💾", label: "Backup chat", action: () => downloadBackup(conv.conversationId) },
-      { emoji: "🧹", label: "Clear chat", action: async () => { const ok=await confirmAction("Clear this chat?","All messages will be removed from your view.","Clear chat"); if (!ok) return; const r=await API.call("clearChat", { conversationId: conv.conversationId }); if(r.success){ await loadMessages(); await loadConversations(); toast("Chat cleared","success"); } else toast(r.message||"Could not clear chat","error"); } }
+      { emoji: "🧹", label: "Clear chat", action: async () => { const ok=await confirmAction("Clear this chat?","All messages will be removed from your view.","Clear chat"); if (!ok) return; const cid=conv.conversationId; const all=await localGetAll("messages").catch(()=>[]); for(const m of all.filter(x=>String(x.conversationId)===String(cid))) await localDelete("messages",m.messageId).catch(()=>{}); if(State.activeConvId===cid){State.messages=[];State._renderedMessagesSignature=null;renderMessages(false);} const r=navigator.onLine?await API.call("clearChat", { conversationId: cid }):{success:false}; if(!r.success)await queueOfflineAction("clearChat",{conversationId:cid}).catch(()=>{}); toast("Chat cleared on this device"+(r.success?"":"; server sync queued"),"success"); } }
     ]), e.currentTarget);
   });
   document.getElementById("selectionCancel")?.addEventListener("click", clearMessageSelection);
@@ -1862,7 +1913,7 @@ function openProfileModal() {
       if (!up.success) { toast(up.message || "Upload failed", "error"); return; }
       const r = await API.call("updateProfile", { avatarUrl: up.data.fileUrl });
       if (r.success) { currentUser.avatarUrl = up.data.fileUrl; renderMe(); toast("Photo updated", "success"); closeModal(); openProfileModal(); }
-    });
+    }, { avatar: true });
   });
   document.getElementById("pfSave").addEventListener("click", async () => {
     const r = await API.call("updateProfile", {
@@ -1874,10 +1925,11 @@ function openProfileModal() {
 }
 
 /* Cropper - simple center-crop tool */
-function openCropper(file, onSave) {
+function openCropper(file, onSave, options = {}) {
+  const avatarMode = options && options.avatar === true;
   const reader = new FileReader();
   reader.onload = () => {
-    const root=document.createElement("div"); root.className="cropper-modal viora-pro-editor";
+    const root=document.createElement("div"); root.className="cropper-modal viora-pro-editor" + (avatarMode ? " avatar-crop-only" : "");
     root.innerHTML=`
       <div class="cropper-header">
         <button id="cropCancel">Cancel</button>
