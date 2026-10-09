@@ -398,7 +398,7 @@ html[data-theme="sunset"]{--bg:#241008;--panel:#35170d;--panel-2:#48200f;--borde
 
 .chat-start-notice{display:flex;gap:10px;align-items:flex-start;max-width:620px;margin:14px auto 18px;padding:12px 14px;border:1px solid color-mix(in srgb,var(--brand) 28%,var(--border));border-radius:12px;background:color-mix(in srgb,var(--brand) 7%,var(--panel));color:var(--text-muted);font-size:12.5px;line-height:1.55;box-shadow:var(--shadow-xs)}
 .chat-start-notice strong{display:block;color:var(--text);font-size:13px;margin-bottom:3px}.chat-start-notice p{margin:0}.chat-start-notice b{color:var(--text)}.chat-start-lock{display:grid;place-items:center;flex:0 0 25px;width:25px;height:25px;border-radius:50%;background:var(--panel);color:var(--brand);font-weight:800}
-.avatar-crop-only .crop-aspect-row{display:none}.avatar-crop-only .crop-extra-row{display:none}.avatar-crop-only .viora-adjust-grid label:not(:first-child){display:none}.avatar-crop-only .viora-adjust-grid{display:block}.avatar-crop-only .cropper-controls{padding:14px 20px}.avatar-crop-only .crop-hint{font-size:12px}.avatar-crop-only .viora-editor-badge{display:none}
+.avatar-crop-only .cropper-canvas-wrap{width:min(360px,calc(100vw - 32px));height:min(360px,calc(100vw - 32px));margin:18px auto 0;border-radius:18px}.avatar-crop-only #cropCanvas{width:100%;height:100%;object-fit:contain}.avatar-crop-only .crop-aspect-row{display:none}.avatar-crop-only .crop-extra-row{display:none}.avatar-crop-only .viora-adjust-grid label:not(:first-child){display:none}.avatar-crop-only .viora-adjust-grid{display:block}.avatar-crop-only .cropper-controls{padding:14px 20px}.avatar-crop-only .crop-hint{font-size:12px}.avatar-crop-only .viora-editor-badge{display:none}.avatar-crop-only .crop-hint{font-size:12px}.profile-photo-actions{display:flex;justify-content:center;margin-top:12px}.profile-photo-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:9px 16px;border:1px solid var(--border);border-radius:10px;background:var(--panel-2);color:var(--brand);font-size:13px;font-weight:700;cursor:pointer}.profile-photo-button:hover{border-color:var(--brand)}.photo-upload-overlay{position:fixed;inset:0;z-index:10080;display:flex;align-items:center;justify-content:center;background:rgba(7,14,18,.62);backdrop-filter:blur(8px)}.photo-upload-card{width:min(330px,calc(100vw - 40px));padding:28px 24px;border-radius:22px;background:var(--panel);color:var(--text);text-align:center;box-shadow:0 24px 70px rgba(0,0,0,.3);border:1px solid var(--border)}.photo-upload-spinner{width:38px;height:38px;margin:0 auto 15px;border:3px solid color-mix(in srgb,var(--brand) 18%,transparent);border-top-color:var(--brand);border-radius:50%;animation:v9spin .75s linear infinite}
 </style>
 </head>
 <body>
@@ -642,6 +642,7 @@ const H = {
     return m ? `https://drive.google.com/thumbnail?id=${m[1]}&sz=w400` : u;
   },
   fileSrc(url) { return H.avatarSrc(url); },
+  downloadSrc(url) { const u=String(url||""); const m=u.match(/(?:id=|\/d\/)([-_A-Za-z0-9]{20,})/); return m ? `https://drive.google.com/uc?export=download&id=${m[1]}` : u; },
   avatarOf(item) { return item?.avatarUrl || item?.avatar || item?.photoUrl || item?.profilePhoto || item?.photo || ""; },
   avatarHtml(item, cls="avatar") {
     const url = H.avatarSrc(H.avatarOf(item));
@@ -847,6 +848,7 @@ async function syncOfflineQueue(){
         }else r=await API.call(item.action,item.payload);
         if(r.success){
           await localDelete("queue",item.queueId);
+          if(item.action === "removeReaction" && item.payload?.messageId){const rm=await localGet("messages",String(item.payload.messageId)).catch(()=>null);if(rm){delete rm._pendingReactionRemoval;await localPut("messages",rm).catch(()=>{});}}
           if(item.action === "deleteMessage" && item.payload?.messageId) {
             const tomb=await localGet("messages",String(item.payload.messageId)).catch(()=>null);
             if(tomb && item.payload.scope === "me") await localDelete("messages",String(item.payload.messageId)).catch(()=>{});
@@ -1259,7 +1261,7 @@ async function loadMessages() {
   const fp=m=>`${m.senderId||""}|${m.messageType||"text"}|${String(m.text||"").trim()}|${m.fileName||""}`;
   const merged=new Map();
   // Server IDs are canonical. Keep local-only/pending rows unless matched to a server echo.
-  server.forEach(m=>merged.set(String(m.messageId),m));
+  server.forEach(m=>{ const local=cachedAll.find(x=>String(x.messageId)===String(m.messageId)); if(local?._pendingReactionRemoval){m={...m,reactions:local.reactions||{},_pendingReactionRemoval:true};} merged.set(String(m.messageId),m); });
   const locals=[...cached,...before].filter(m=>String(m.messageId).startsWith("tmp_") || m.status==="pending" || m.status==="sending" || m.status==="uploading");
   for(const local of locals){
     if(local._locallyDeleted)continue;
@@ -1276,6 +1278,7 @@ async function loadMessages() {
   for(const m of State.messages){if(!String(m.messageId).startsWith("tmp_"))await localPut("messages",m).catch(()=>{});}
 }
 
+document.addEventListener("click", async e=>{const a=e.target.closest("a[data-photo-download]");if(!a)return;const url=a.dataset.fileUrl;if(!url)return;const id=(String(url).match(/(?:id=|\/d\/)([-_A-Za-z0-9]{20,})/)||[])[1];if(!id)return; e.preventDefault();const name=a.getAttribute("download")||"viora-photo.jpg";try{const res=await fetch(`https://drive.google.com/uc?export=download&id=${id}`,{mode:"cors",credentials:"omit"});if(!res.ok)throw new Error("download");const blob=await res.blob();const temp=document.createElement("a");temp.href=URL.createObjectURL(blob);temp.download=name;document.body.appendChild(temp);temp.click();temp.remove();setTimeout(()=>URL.revokeObjectURL(temp.href),30000);}catch(_){const temp=document.createElement("a");temp.href=`https://drive.google.com/uc?export=download&id=${id}`;temp.download=name;temp.rel="noopener";document.body.appendChild(temp);temp.click();temp.remove();}},true);
 function renderMessages(forceBottom = false) {
   const me = currentUser.userId;
   const wrap = document.getElementById("messages");
@@ -1319,7 +1322,7 @@ function renderMessageHtml(m, me) {
     body += `<span class="text">${H.esc(m.text||"").replace(/(https?:\/\/[^\s<]+)/g,'<a href="$1" target="_blank" rel="noopener">$1</a>')}</span>`;
   } else if (m.messageType === "image") {
     body += `<img class="msg-image" src="${H.esc(H.fileSrc(m.fileUrl))}" data-img="${H.esc(H.fileSrc(m.fileUrl))}" loading="lazy">`;
-    body += `<a class="photo-download-link" href="${H.esc(H.fileSrc(m.fileUrl))}" download="${H.esc(m.fileName||"viora-photo.jpg")}" target="_blank" rel="noopener">⬇ Download photo</a>`;
+    body += `<a class="photo-download-link" href="${H.esc(H.downloadSrc ? H.downloadSrc(m.fileUrl) : H.fileSrc(m.fileUrl))}" data-photo-download="1" data-file-url="${H.esc(m.fileUrl||"")}" download="${H.esc(m.fileName||"viora-photo.jpg")}" rel="noopener"><span aria-hidden="true">↓</span> Download photo</a>`;
     if (m.text) body += `<span class="text">${H.esc(m.text)}</span>`;
   } else if (m.messageType === "video") {
     body += `<video class="msg-video" src="${H.esc(m.fileUrl)}" controls preload="metadata"></video>`;
@@ -1422,7 +1425,7 @@ function openMessageMenu(messageId, rowEl) {
     { label: "React ❤️", emoji: "❤️", fn: () => API.call("addReaction", { messageId, reaction: "❤️" }).then(loadMessages) },
     { label: "React 👍", emoji: "👍", fn: () => API.call("addReaction", { messageId, reaction: "👍" }).then(loadMessages) },
     { label: "React 😂", emoji: "😂", fn: () => API.call("addReaction", { messageId, reaction: "😂" }).then(loadMessages) },
-    ...(m.reactions && Object.values(m.reactions).some(users => Array.isArray(users) ? users.map(String).includes(String(currentUser.userId)) : false) ? [{ label: "Remove my reaction", emoji: "↩️", fn: async () => { const uid=String(currentUser.userId); const old=m.reactions||{}; const next={}; Object.entries(old).forEach(([emoji,users])=>{const arr=Array.isArray(users)?users.filter(u=>String(u)!==uid):[];if(arr.length)next[emoji]=arr;}); m.reactions=next; State._renderedMessagesSignature=null; await localPut("messages",m).catch(()=>{}); renderMessages(false); const rr=navigator.onLine?await API.call("removeReaction", { messageId }):{success:false}; if(rr.success){toast("Reaction removed","success");}else{await queueOfflineAction("removeReaction",{messageId}).catch(()=>{});toast("Reaction removed here; server sync queued");} } }] : []),
+    ...(m.reactions && Object.values(m.reactions).some(users => Array.isArray(users) ? users.map(String).includes(String(currentUser.userId)) : false) ? [{ label: "Remove my reaction", emoji: "↩️", fn: async () => { const uid=String(currentUser.userId); const old=m.reactions||{}; const next={}; Object.entries(old).forEach(([emoji,users])=>{const arr=Array.isArray(users)?users.filter(u=>String(u)!==uid):[];if(arr.length)next[emoji]=arr;}); m.reactions=next; m._pendingReactionRemoval=true; State._renderedMessagesSignature=null; await localPut("messages",m).catch(()=>{}); renderMessages(false); const rr=navigator.onLine?await API.call("removeReaction", { messageId }):{success:false}; if(rr.success){delete m._pendingReactionRemoval; await localPut("messages",m).catch(()=>{});toast("Reaction removed","success");}else{await queueOfflineAction("removeReaction",{messageId}).catch(()=>{});toast("Reaction removed","success");} } }] : []),
     ...(isMine && m.messageType === "text" && !m.deletedForEveryone ? [{ label: "Edit", emoji: "✏️", fn: () => editMsg(m) }] : []),
     { label: "Delete for me", emoji: "🗑️", danger: true, fn: () => delMsg(m, "me") },
     ...(isMine && !m.deletedForEveryone ? [{ label: "Delete for everyone", emoji: "❌", danger: true, fn: () => delMsg(m, "everyone") }] : [])
@@ -1891,12 +1894,9 @@ function openSearchUsersModal() {
 function openProfileModal() {
   openModal(`<button class="modal-close" data-close-modal>✕</button>
     <h2>My profile</h2>
-    <div style="text-align:center;margin-bottom:20px">
-      ${H.avatarHtml(currentUser,"avatar lg")}
-      <label style="display:inline-flex;align-items:center;gap:8px;margin-top:14px;cursor:pointer;color:var(--brand);font-size:14px;font-weight:600">
-        📷 Change photo
-        <input type="file" id="pfPhoto" accept="image/*" hidden>
-      </label>
+    <div class="profile-photo-area" style="display:flex;flex-direction:column;align-items:center;margin:8px 0 22px">
+      <div class="profile-photo-preview">${H.avatarHtml(currentUser,"avatar lg")}</div>
+      <div class="profile-photo-actions"><label class="profile-photo-button" for="pfPhoto"><span aria-hidden="true">＋</span> Change photo<input type="file" id="pfPhoto" accept="image/*" hidden></label></div>
     </div>
     <div class="field"><input type="text" id="pfName" value="${H.esc(currentUser.fullName)}" placeholder=" "><label>Full name</label></div>
     <div class="field"><input type="text" value="@${H.esc(currentUser.username)}" placeholder=" " disabled style="opacity:.6"><label>Username</label></div>
@@ -1908,11 +1908,16 @@ function openProfileModal() {
   document.getElementById("pfPhoto").addEventListener("change", e => {
     const f = e.target.files[0]; if (!f) return;
     openCropper(f, async croppedBase64 => {
-      toast("Uploading photo…");
-      const up = await API.call("uploadFile", { base64: croppedBase64, mime: "image/jpeg", name: "avatar.jpg", size: croppedBase64.length });
-      if (!up.success) { toast(up.message || "Upload failed", "error"); return; }
-      const r = await API.call("updateProfile", { avatarUrl: up.data.fileUrl });
-      if (r.success) { currentUser.avatarUrl = up.data.fileUrl; renderMe(); toast("Photo updated", "success"); closeModal(); openProfileModal(); }
+      const overlay=document.createElement("div"); overlay.className="photo-upload-overlay"; overlay.innerHTML='<div class="photo-upload-card"><div class="photo-upload-spinner"></div><div style="font-size:18px;font-weight:750">Uploading photo…</div><div style="font-size:13px;color:var(--text-muted);line-height:1.5;margin-top:8px">Please wait while your profile photo is saved.</div><div style="font-size:11px;color:var(--text-muted);margin-top:14px">Keep this window open</div></div>'; document.body.appendChild(overlay);
+      const saveButton=document.getElementById("pfSave"); if(saveButton)saveButton.disabled=true;
+      try {
+        const up = await API.call("uploadFile", { base64: croppedBase64, mime: "image/jpeg", name: "avatar.jpg", size: croppedBase64.length });
+        if (!up.success) { toast(up.message || "Upload failed", "error"); return; }
+        const r = await API.call("updateProfile", { avatarUrl: up.data.fileUrl });
+        if (r.success) { currentUser.avatarUrl = up.data.fileUrl; currentUser.avatar = up.data.fileUrl; renderMe(); toast("Photo updated", "success"); closeModal(); openProfileModal(); }
+        else toast(r.message || "Could not save profile photo", "error");
+      } catch(err) { toast("Photo upload failed. Please try again.","error"); }
+      finally { overlay.remove(); const b=document.getElementById("pfSave"); if(b)b.disabled=false; }
     }, { avatar: true });
   });
   document.getElementById("pfSave").addEventListener("click", async () => {
@@ -1966,12 +1971,12 @@ function openCropper(file, onSave, options = {}) {
 
     const canvas=root.querySelector("#cropCanvas"),ctx=canvas.getContext("2d"),img=new Image();
     img.src=reader.result;
-    let ratio=1,zoom=1,offsetX=0,offsetY=0,drag=false,sx=0,sy=0,lastDist=0;
+    let ratio=1,zoom=1,offsetX=0,offsetY=0,drag=false,sx=0,sy=0,lastDist=0; if(avatarMode) ratio=1;
     let rotation=0,flipX=1,brightness=100,contrast=100,saturation=100;
 
     function resizeCanvas(){
       const maxW=Math.min(window.innerWidth-28,560), maxH=Math.min(window.innerHeight-320,560);
-      let w=maxW,h=w/ratio; if(h>maxH){h=maxH;w=h*ratio;}
+      let w=maxW,h=w/ratio; if(h>maxH){h=maxH;w=h*ratio;} if(avatarMode){w=h=Math.min(maxW,maxH,360);}
       canvas.width=Math.max(1,Math.round(w)); canvas.height=Math.max(1,Math.round(h)); draw();
     }
     function cover(){
@@ -2005,7 +2010,7 @@ function openCropper(file, onSave, options = {}) {
       ["cropZoom","cropBrightness","cropContrast","cropSaturation"].forEach((id,i)=>root.querySelector("#"+id).value=[1,100,100,100][i]); resizeCanvas();
     }
     img.onload=()=>resizeCanvas(); window.addEventListener("resize",resizeCanvas);
-    root.querySelectorAll("[data-ratio]").forEach(b=>b.onclick=()=>{root.querySelectorAll("[data-ratio]").forEach(x=>x.classList.remove("active"));b.classList.add("active");ratio=parseFloat(b.dataset.ratio);offsetX=offsetY=0;resizeCanvas();});
+    root.querySelectorAll("[data-ratio]").forEach(b=>b.onclick=()=>{root.querySelectorAll("[data-ratio]").forEach(x=>x.classList.remove("active"));b.classList.add("active");ratio=avatarMode?1:parseFloat(b.dataset.ratio);offsetX=offsetY=0;resizeCanvas();});
     root.querySelector("#cropZoom").oninput=e=>{zoom=parseFloat(e.target.value);draw()};
     root.querySelector("#cropBrightness").oninput=e=>{brightness=+e.target.value;draw()};
     root.querySelector("#cropContrast").oninput=e=>{contrast=+e.target.value;draw()};
