@@ -937,7 +937,7 @@ function wireAuthUI() {
       const b=document.getElementById("vioraLogoutOther"),er=document.getElementById("vioraSessionError");b.disabled=true;b.innerHTML='<span class="action-spinner"></span> Signing out other devices…';er.textContent="";
       const fd=new FormData(loginForm);const r=await API.call("login",{username:String(fd.get("username")||"").trim(),password:String(fd.get("password")||""),forceLogin:true,deviceId:vioraDeviceId(),deviceLabel:vioraDeviceLabel()});
       if(!r.success){er.textContent=r.message||"Could not sign out other devices.";b.disabled=false;b.textContent="Try again";return}
-      overlay.remove();currentToken=r.data.token;currentUser=r.data.user;try{sessionStorage.setItem(CONFIG.SESSION_KEY,currentToken)}catch{};await enterApp();
+      overlay.remove();currentToken=r.data.token;currentUser=r.data.user;try{localStorage.setItem(CONFIG.SESSION_KEY,currentToken)}catch{};await enterApp();
     };
   }
   let loginBusy=false;
@@ -951,7 +951,7 @@ function wireAuthUI() {
       const r = await API.call("login", { username, password, deviceId:vioraDeviceId(), deviceLabel:vioraDeviceLabel() });
       if (!r.success) { clearVioraBusy(); if(r.code==="ACTIVE_SESSIONS"||r.data?.activeSessions){showActiveSessionsPopup(r.data?.activeSessions||[]);return;} showErr(r.message); return; }
       currentToken = r.data.token; currentUser = r.data.user;
-      try { sessionStorage.setItem(CONFIG.SESSION_KEY, currentToken); } catch {}
+      try { localStorage.setItem(CONFIG.SESSION_KEY, currentToken); } catch {}
       // Restore local cache first; network sync continues after the chat screen appears.
       await enterApp();
     } catch(err) { clearVioraBusy(); showErr("Could not sign in. Check your connection and try again."); }
@@ -1174,11 +1174,13 @@ function renderList() {
         {emoji:"🗑️",label:"Delete chat for me",danger:true,action:async()=>{
           if(!await confirmAction("Delete this chat?","This removes the conversation from your view.")) return;
           const cid=c.conversationId;
+          setVioraBusy("Removing chat", "Updating this device and syncing your chat list…");
           await hideConversationLocally(cid);
           if(State.activeConvId===cid) { State._chatHistoryOpen=false; closeChat(true); }
           State.conversations=State.conversations.filter(x=>String(x.conversationId)!==String(cid));State._convKey="";renderList();
           const r=navigator.onLine?await API.call("clearChat",{conversationId:cid}):{success:false};
           if(!r.success) await queueOfflineAction("clearChat",{conversationId:cid}).catch(()=>{});
+          clearVioraBusy();
           toast("Chat removed from this device"+(r.success?"":"; server sync queued"),"success");
         }}
       ]),n);
@@ -1335,7 +1337,7 @@ function renderMessages(forceBottom = false) {
   State._renderedMessagesSignature = signature;
   bindMessageEvents();
   updateSelectionToolbar();
-  requestAnimationFrame(() => { const w = document.getElementById("messagesWrap"); if (forceBottom || w.scrollHeight - w.scrollTop - w.clientHeight < 160) w.scrollTop = w.scrollHeight; });
+  requestAnimationFrame(() => { const w = document.getElementById("messagesWrap"); if (w && (forceBottom || w.scrollHeight - w.scrollTop - w.clientHeight < 160)) w.scrollTop = w.scrollHeight; });
 }
 function renderMessageHtml(m, me) {
   const isOut = m.senderId === me;
@@ -1552,7 +1554,7 @@ async function sendText(text) {
     const r=await API.call("sendMessage",payload), i=State.messages.findIndex(x=>x.messageId===tempId);
     if(r.success&&i>-1){State.messages[i]=r.data?.message?{...r.data.message,status:r.data.message.status||"sent"}:{...State.messages[i],status:"sent"};await localDelete("messages",tempId);await localPut("messages",{...State.messages[i],conversationId:State.activeConvId});}
     else if(i>-1){State.messages[i].status="failed";await localPut("messages",State.messages[i]);}
-    State._messagesKey="";renderMessages(true);
+    State._messagesKey="";renderMessages(false);
     if(r.success){const conv=State.conversations.find(c=>c.conversationId===State.activeConvId);const local=State.messages.find(x=>x.messageId===tempId)||r.data?.message;if(conv&&local){conv.lastMessageStatus=messageStatus(local);conv.lastMessageSenderId=currentUser.userId;conv.lastMessage=text;conv.unreadCount=0;}if(window.VioraHybrid) window.VioraHybrid.publish({type:"message:new",conversationId:State.activeConvId,messageId:local?.messageId||tempId,senderId:currentUser.userId,clientMessageId:tempId});loadConversations();autoBackupSnapshot();}else toast(r.message||"Message failed","error");
   }catch(e){await queueOfflineAction("sendMessage",payload,localMessage);toast("Connection lost — message saved and will send automatically","default");}
   finally{State.sendInFlight=Math.max(0,(State.sendInFlight||1)-1);form.dataset.sending="";}
@@ -1731,7 +1733,7 @@ function wireAppUI() {
       { label: "Settings", action: openSettingsModal },
       { label: "Backup & export", action: openBackupModal },
       { label: "Refresh", action: async () => { await Promise.all([loadConversations(),loadRequests()]); toast("Updated", "success"); } },
-      { label: "Logout", danger: true, action: async () => { const ok=await confirmAction("Log out of Viora?","Are you sure you want to log out?","Log out"); if(!ok)return; await API.call("logout"); stopPolling(); stopAutoBackup(); currentToken = null; currentUser = null; sessionStorage.removeItem(CONFIG.SESSION_KEY); location.reload(); } }
+      { label: "Logout", danger: true, action: async () => { const ok=await confirmAction("Log out of Viora?","Are you sure you want to log out?","Log out"); if(!ok)return; setVioraBusy("Signing out", "Ending your Viora session safely…"); await API.call("logout"); stopPolling(); stopAutoBackup(); currentToken = null; currentUser = null; localStorage.removeItem(CONFIG.SESSION_KEY); location.reload(); } }
     ]), document.getElementById("btnProfileMenu"));
   });
   document.getElementById("meInfoBtn").addEventListener("click", openProfileModal);
@@ -1744,7 +1746,7 @@ function wireAppUI() {
       { label: "Backup & export", action: openBackupModal },
       { label: "Privacy & security", action: openPrivacyModal },
       { label: "About " + CONFIG.APP_NAME, action: openAboutModal },
-      { label: "Logout", danger: true, action: async () => { const ok=await confirmAction("Log out of Viora?","Are you sure you want to log out?","Log out"); if(!ok)return; await API.call("logout"); stopPolling(); stopAutoBackup(); currentToken = null; currentUser = null; sessionStorage.removeItem(CONFIG.SESSION_KEY); location.reload(); } }
+      { label: "Logout", danger: true, action: async () => { const ok=await confirmAction("Log out of Viora?","Are you sure you want to log out?","Log out"); if(!ok)return; setVioraBusy("Signing out", "Ending your Viora session safely…"); await API.call("logout"); stopPolling(); stopAutoBackup(); currentToken = null; currentUser = null; localStorage.removeItem(CONFIG.SESSION_KEY); location.reload(); } }
     ]), e.currentTarget);
   });
   document.getElementById("btnNewChat").addEventListener("click", openSearchUsersModal);
@@ -1757,7 +1759,7 @@ function wireAppUI() {
     showMenuAt(buildMenu([
       { emoji: "👁️", label: "Contact info", action: openContactInfo },
       { emoji: "💾", label: "Backup chat", action: () => downloadBackup(conv.conversationId) },
-      { emoji: "🧹", label: "Clear chat", action: async () => { const ok=await confirmAction("Clear this chat?","All messages will be removed from your view.","Clear chat"); if (!ok) return; const cid=conv.conversationId; const all=await localGetAll("messages").catch(()=>[]); const mine=all.filter(x=>String(x.conversationId)===String(cid)&&!x._locallyDeleted); for(const m of mine){await localPut("messages",{messageId:String(m.messageId),conversationId:cid,timestamp:m.timestamp||new Date().toISOString(),senderId:m.senderId,_locallyDeleted:true,_pendingDeleteScope:"me"}).catch(()=>{});} if(State.activeConvId===cid){State.messages=[];State._messagesKey="";State._renderedMessagesSignature=null;renderMessages(false);} const r=navigator.onLine?await API.call("clearChat", { conversationId: cid }):{success:false}; if(!r?.success)await queueOfflineAction("clearChat",{conversationId:cid}).catch(()=>{}); toast("Chat cleared on this device"+(r?.success?"":"; server sync queued"),"success"); } }
+      { emoji: "🧹", label: "Clear chat", action: async () => { const ok=await confirmAction("Clear this chat?","All messages will be removed from your view.","Clear chat"); if (!ok) return; const cid=conv.conversationId; setVioraBusy("Clearing chat", "Removing messages and syncing your chat changes…"); try { const all=await localGetAll("messages").catch(()=>[]); const mine=all.filter(x=>String(x.conversationId)===String(cid)&&!x._locallyDeleted); for(const m of mine){await localPut("messages",{messageId:String(m.messageId),conversationId:cid,timestamp:m.timestamp||new Date().toISOString(),senderId:m.senderId,_locallyDeleted:true,_pendingDeleteScope:"me"}).catch(()=>{});} if(State.activeConvId===cid){State.messages=[];State._messagesKey="";State._renderedMessagesSignature=null;renderMessages(false);} const r=navigator.onLine?await API.call("clearChat", { conversationId: cid }):{success:false}; if(!r?.success)await queueOfflineAction("clearChat",{conversationId:cid}).catch(()=>{}); toast("Chat cleared on this device"+(r?.success?"":"; server sync queued"),"success"); } catch(err) { toast("Chat cleared locally; sync will retry when possible", "error"); } finally { clearVioraBusy(); } } }
     ]), e.currentTarget);
   });
   document.getElementById("selectionCancel")?.addEventListener("click", clearMessageSelection);
@@ -2158,16 +2160,16 @@ function openSettingsModal() {
     if(!ok) return;
     await API.call("logout");
     stopPolling(); stopAutoBackup(); currentToken = null; currentUser = null;
-    sessionStorage.removeItem(CONFIG.SESSION_KEY);
+    localStorage.removeItem(CONFIG.SESSION_KEY);
     location.reload();
   });
   document.getElementById("stDeleteAccount").addEventListener("click", async () => {
     const ok=await confirmAction("Delete account permanently?","This action is permanent. Your account and associated data may be removed by the server.","Delete account");
     if(!ok) return;
     const b=document.getElementById("stDeleteAccount"); b.disabled=true; b.innerHTML='<span class="action-spinner"></span> Deleting…';
-    const r=await API.call("deleteAccount");
-    if(r.success){ stopPolling(); stopAutoBackup(); currentToken=null; currentUser=null; sessionStorage.removeItem(CONFIG.SESSION_KEY); toast("Account deleted","success"); setTimeout(()=>location.reload(),500); }
-    else { b.disabled=false; b.textContent="Delete account"; toast(r.message||"Account deletion is not available on the server","error"); }
+    setVioraBusy("Deleting account", "Removing your account and closing its session…"); const r=await API.call("deleteAccount");
+    if(r.success){ stopPolling(); stopAutoBackup(); currentToken=null; currentUser=null; localStorage.removeItem(CONFIG.SESSION_KEY); toast("Account deleted","success"); setTimeout(()=>location.reload(),500); }
+    else { clearVioraBusy(); b.disabled=false; b.textContent="Delete account"; toast(r.message||"Account deletion is not available on the server","error"); }
   });
 }
 function openContactInfo() {
@@ -2315,9 +2317,9 @@ async function boot() {
   applyTheme(localStorage.getItem(CONFIG.THEME_KEY) || "light");
 
   // Try restore session
-  const saved = sessionStorage.getItem(CONFIG.SESSION_KEY);
+  let saved = null; try { saved = localStorage.getItem(CONFIG.SESSION_KEY); } catch (_) { saved = sessionStorage.getItem(CONFIG.SESSION_KEY); }
   if (saved) {
-    currentToken = saved;
+    currentToken = saved; try { localStorage.setItem(CONFIG.SESSION_KEY, saved); } catch (_) {}
     const cachedUser = await localGetMeta("user").catch(()=>null);
     if (!navigator.onLine && cachedUser) {
       currentUser=cachedUser;
@@ -2331,7 +2333,7 @@ async function boot() {
       return;
     }
     
-    sessionStorage.removeItem(CONFIG.SESSION_KEY);
+    localStorage.removeItem(CONFIG.SESSION_KEY);
     currentToken = null;
   }
   // Show auth
