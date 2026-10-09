@@ -597,7 +597,9 @@ window.CONFIG = {
   IMAGE_QUALITY: 0.82,
   MESSAGES_PAGE: 100,
   SESSION_KEY: "viora.session.v5",
-  THEME_KEY: "viora.theme.v5"
+  THEME_KEY: "viora.theme.v5",
+  HYBRID_MESSAGING: true,
+  ABLY_CLIENT_URL: "https://cdn.ably.com/lib/ably.min-1.js"
 };
 
 /* Apply brand name everywhere */
@@ -1236,6 +1238,7 @@ async function openConversation(id) {
   status.textContent = conv.online ? "online" : "last seen " + H.timeAgo(conv.lastSeen);
   renderList();
   await loadMessages();
+  if(window.VioraHybrid) window.VioraHybrid.subscribeActive();
   // Clear the badge immediately after the chat is actually opened.
   conv.unreadCount = 0;
   State.conversations = State.conversations.map(c => c.conversationId === id ? {...c, unreadCount:0} : c);
@@ -1550,7 +1553,7 @@ async function sendText(text) {
     if(r.success&&i>-1){State.messages[i]=r.data?.message?{...r.data.message,status:r.data.message.status||"sent"}:{...State.messages[i],status:"sent"};await localDelete("messages",tempId);await localPut("messages",{...State.messages[i],conversationId:State.activeConvId});}
     else if(i>-1){State.messages[i].status="failed";await localPut("messages",State.messages[i]);}
     State._messagesKey="";renderMessages(true);
-    if(r.success){const conv=State.conversations.find(c=>c.conversationId===State.activeConvId);const local=State.messages.find(x=>x.messageId===tempId)||r.data?.message;if(conv&&local){conv.lastMessageStatus=messageStatus(local);conv.lastMessageSenderId=currentUser.userId;conv.lastMessage=text;conv.unreadCount=0;}loadConversations();autoBackupSnapshot();}else toast(r.message||"Message failed","error");
+    if(r.success){const conv=State.conversations.find(c=>c.conversationId===State.activeConvId);const local=State.messages.find(x=>x.messageId===tempId)||r.data?.message;if(conv&&local){conv.lastMessageStatus=messageStatus(local);conv.lastMessageSenderId=currentUser.userId;conv.lastMessage=text;conv.unreadCount=0;}if(window.VioraHybrid) window.VioraHybrid.publish({type:"message:new",conversationId:State.activeConvId,messageId:local?.messageId||tempId,senderId:currentUser.userId,clientMessageId:tempId});loadConversations();autoBackupSnapshot();}else toast(r.message||"Message failed","error");
   }catch(e){await queueOfflineAction("sendMessage",payload,localMessage);toast("Connection lost — message saved and will send automatically","default");}
   finally{State.sendInFlight=Math.max(0,(State.sendInFlight||1)-1);form.dataset.sending="";}
 }
@@ -2226,6 +2229,85 @@ function toggleTheme(){ openThemeModal(); }
 /* ================================================================
    Boot
    ================================================================ */
+/* ================= VIORA HYBRID MESSAGING LAYER =================
+   IndexedDB local-first queue + Ably realtime invalidation + WebRTC data-channel
+   foundation. Google Apps Script remains durable fallback/source of truth.
+   Configure ABLY_API_KEY in Apps Script Script Properties (never in this HTML).
+*/
+window.VioraHybrid = (() => {
+  const channelName = () => 'viora:conversation:' + String(State.activeConvId || 'none');
+  let realtime = null, channel = null, currentChannelName = '', pc = null, dc = null;
+  let retryTimer = null, started = false;
+  const status = { realtime:'offline', webrtc:'idle', localFirst:true };
+  function setStatus(kind, value) { status[kind] = value; document.documentElement.dataset['viora'+kind] = value; }
+  async function loadAblySDK(){
+    if(window.Ably) return true;
+    if(!CONFIG.ABLY_CLIENT_URL) return false;
+    return new Promise(resolve=>{const s=document.createElement('script');s.src=CONFIG.ABLY_CLIENT_URL;s.async=true;s.onload=()=>resolve(!!window.Ably);s.onerror=()=>resolve(false);document.head.appendChild(s);});
+  }
+  async function connect(){
+    if(!CONFIG.HYBRID_MESSAGING || !currentUser || !navigator.onLine) return false;
+    if(!await loadAblySDK()){setStatus('realtime','sdk-unavailable');return false;}
+    try {
+      if(realtime) { try{realtime.close();}catch{} }
+      realtime = new Ably.Realtime({authUrl:CONFIG.API_URL+'?action=ablyToken', authMethod:'POST', authHeaders:{'Content-Type':'text/plain;charset=utf-8'}, authParams:{token:currentToken}, authCallback: async (_params, cb)=>{
+        try { const res=await fetch(CONFIG.API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'ablyToken',token:currentToken}),cache:'no-store'}); const data=await res.json(); if(!data.success) throw new Error(data.message||'Ably auth failed'); cb(null,data.data.tokenRequest); } catch(e){cb(e,null);}
+      }});
+      realtime.connection.on(state=>{setStatus('realtime',state.current); if(state.current==='connected') subscribeActive();});
+      setStatus('realtime','connecting'); return true;
+    } catch(e){console.warn('[VioraHybrid] Ably connection:',e);setStatus('realtime','error');return false;}
+  }
+  function subscribeActive(){
+    if(!realtime || !State.activeConvId) return;
+    const name=channelName(); if(name===currentChannelName && channel) return;
+    try{if(channel) channel.unsubscribe();}catch{}
+    currentChannelName=name; channel=realtime.channels.get(name);
+    channel.subscribe('event', async msg=>{
+      const d=msg.data||{}; if(d.senderId===currentUser?.userId) return;
+      if(d.type==='message:new' && String(d.conversationId)===String(State.activeConvId)) {
+        // Event is only a wake-up signal: fetch canonical durable records from the server.
+        if(typeof loadMessages==='function') await loadMessages();
+      }
+      if(d.type==='webrtc:signal') handleSignal(d).catch(console.warn);
+    });
+  }
+  async function publish(event){
+    if(!event || !event.conversationId) return false;
+    try {
+      if(!realtime || realtime.connection.state!=='connected') return false;
+      const ch=realtime.channels.get('viora:conversation:'+String(event.conversationId));
+      await ch.publish('event',{...event,senderId:currentUser?.userId,at:new Date().toISOString()});return true;
+    } catch(e){console.warn('[VioraHybrid] publish failed',e);return false;}
+  }
+  async function sendSignal(peerUserId, signal){
+    if(!State.activeConvId) throw new Error('Open a conversation first');
+    await publish({type:'webrtc:signal',conversationId:State.activeConvId,fromUserId:currentUser.userId,toUserId:String(peerUserId),signal});
+  }
+  async function startWebRTC(peerUserId, initiator=false){
+    if(!window.RTCPeerConnection) throw new Error('WebRTC not supported in this browser');
+    closeWebRTC();
+    pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
+    pc.onicecandidate=e=>{if(e.candidate) sendSignal(peerUserId,{candidate:e.candidate}).catch(console.warn);};
+    pc.onconnectionstatechange=()=>setStatus('webrtc',pc?.connectionState||'closed');
+    pc.ondatachannel=e=>{dc=e.channel;wireDataChannel();};
+    if(initiator){dc=pc.createDataChannel('viora-messages',{ordered:true});wireDataChannel();const offer=await pc.createOffer();await pc.setLocalDescription(offer);await sendSignal(peerUserId,{description:pc.localDescription});}
+    return pc;
+  }
+  function wireDataChannel(){if(!dc)return;dc.onopen=()=>setStatus('webrtc','connected');dc.onclose=()=>setStatus('webrtc','closed');dc.onmessage=async e=>{try{const d=JSON.parse(e.data);if(d.type==='message:new' && d.message){await localPut('messages',{...d.message,_transport:'webrtc'});if(String(d.message.conversationId)===String(State.activeConvId)&&typeof loadMessages==='function')await loadMessages();}}catch(err){console.warn('[VioraHybrid] bad data-channel payload',err);}};}
+  async function handleSignal(d){
+    if(!currentUser||String(d.toUserId)!==String(currentUser.userId)||!d.signal)return;
+    // Peer identity and conversation membership must be verified by the signaling backend
+    // before production WebRTC signaling is enabled. Current Apps Script stores durable messages.
+    const peer=d.fromUserId, s=d.signal;
+    if(s.description){if(!pc)await startWebRTC(peer,false);await pc.setRemoteDescription(new RTCSessionDescription(s.description));if(s.description.type==='offer'){const answer=await pc.createAnswer();await pc.setLocalDescription(answer);await sendSignal(peer,{description:pc.localDescription});}}
+    else if(s.candidate&&pc)try{await pc.addIceCandidate(new RTCIceCandidate(s.candidate));}catch(e){console.warn(e);}
+  }
+  function closeWebRTC(){try{dc?.close();pc?.close();}catch{}dc=null;pc=null;setStatus('webrtc','closed');}
+  async function onOnline(){await syncOfflineQueue().catch(console.warn);await connect();subscribeActive();}
+  function start(){if(started||!currentUser)return;started=true;connect();window.addEventListener('online',onOnline);window.addEventListener('offline',()=>setStatus('realtime','offline'));window.addEventListener('beforeunload',closeWebRTC);}
+  return {start,connect,publish,subscribeActive,startWebRTC,closeWebRTC,status,queue:queueOfflineAction,sync:syncOfflineQueue};
+})();
+
 async function boot() {
   await loadBackupHandle();
   wireAuthUI();
@@ -2275,7 +2357,7 @@ async function boot() {
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => { navigator.serviceWorker.register("./sw.js?v=2").catch(() => {}); });
 }
-document.addEventListener("DOMContentLoaded", boot);
+document.addEventListener("DOMContentLoaded", async () => { await boot(); if(window.VioraHybrid && currentUser) window.VioraHybrid.start(); });
 </script>
 </body>
 </html>
