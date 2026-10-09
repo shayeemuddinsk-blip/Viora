@@ -353,19 +353,53 @@ html[data-theme="sunset"]{--bg:#241008;--panel:#35170d;--panel-2:#48200f;--borde
 /* Professional initial chat loading window */
 #vioraChatLoading{position:fixed;inset:0;z-index:10050;display:none;align-items:center;justify-content:center;background:rgba(7,14,18,.62);backdrop-filter:blur(8px);}
 #vioraChatLoading.show{display:flex;}
+.viora-loading-card{min-width:min(320px,calc(100vw - 40px));max-width:390px;padding:28px 30px;border:1px solid rgba(255,255,255,.13);border-radius:22px;background:rgba(18,25,31,.94);box-shadow:0 24px 90px rgba(0,0,0,.38);text-align:center;color:#f8fafc;animation:vioraPop .18s ease-out;}
+.viora-loading-title{font-size:19px;font-weight:750;margin-top:15px;letter-spacing:-.3px}.viora-loading-sub{font-size:13px;line-height:1.55;color:#b8c2cb;margin-top:7px}.viora-loading-note{font-size:11px;color:#8996a1;margin-top:16px}.photo-download-link{display:inline-flex;align-items:center;gap:5px;margin-top:7px;padding:6px 10px;border-radius:9px;background:var(--panel-2);color:var(--text);font-size:12px;font-weight:650;text-decoration:none;border:1px solid var(--border)}.photo-download-link:hover{border-color:var(--brand);color:var(--brand)}@keyframes vioraPop{from{opacity:0;transform:translateY(7px) scale(.98)}to{opacity:1;transform:none}}
+#vioraChatLoading{pointer-events:none}#vioraChatLoading.show{pointer-events:auto}
 .v9-loading-card{width:min(330px,calc(100vw - 40px));padding:28px 24px;border-radius:22px;background:var(--panel);color:var(--text);box-shadow:0 24px 70px rgba(0,0,0,.28);text-align:center;border:1px solid var(--border);}
 .v9-loading-spinner{width:38px;height:38px;margin:0 auto 15px;border:3px solid color-mix(in srgb,var(--brand) 18%,transparent);border-top-color:var(--brand);border-radius:50%;animation:v9spin .75s linear infinite;}
 @keyframes v9spin{to{transform:rotate(360deg)}}
 .v9-loading-title{font-size:16px;font-weight:700}.v9-loading-sub{font-size:12.5px;color:var(--text-muted);margin-top:6px}
 
+/* ===== Viora fast chat composer + gesture polish ===== */
+.composer textarea#messageInput{
+  background:var(--panel-2) !important;
+  color:var(--text) !important;
+  -webkit-text-fill-color:var(--text) !important;
+  caret-color:var(--brand) !important;
+  opacity:1 !important;
+  min-width:0;
+}
+.composer textarea#messageInput::placeholder{color:var(--text-muted)!important;opacity:.9!important;}
+.msg-row{touch-action:pan-y;user-select:none;-webkit-user-select:none;}
+.msg-row.swipe-ready{transition:transform .16s ease;}
+.msg-row.swipe-reply{background:transparent;}
+.swipe-reply-hint{position:absolute;left:10px;top:50%;transform:translateY(-50%);width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:var(--brand);color:#fff;font-size:16px;opacity:.9;pointer-events:none;box-shadow:0 5px 16px rgba(0,0,0,.16);}
+.context-menu{z-index:10090!important;max-height:min(70vh,520px);overflow:auto;}
+.crop-aspect-row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;}
+.crop-aspect-btn{padding:8px 12px;border:1px solid #394047;border-radius:999px;background:#171b1f;color:#dfe7eb;font-size:12px;cursor:pointer;}
+.crop-aspect-btn.active{background:var(--brand);border-color:var(--brand);color:#fff;}
+.crop-hint{color:#9aa5ab;font-size:12px;text-align:center;}
+
 /* Image crop/send preview */
 .v9-crop-btn{margin-top:10px;width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:11px;background:var(--panel-2);color:var(--text);font-weight:600;}
 .v9-crop-btn:hover{border-color:var(--brand);color:var(--brand);}
+
+
+/* Viora Professional Photo Editor v11 */
+.viora-pro-editor .cropper-canvas-wrap{background:#090d10;border-radius:18px;overflow:hidden;box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)}
+.viora-editor-badge{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);padding:5px 10px;border-radius:999px;background:rgba(0,0,0,.55);color:#fff;font-size:11px;pointer-events:none;backdrop-filter:blur(6px)}
+.viora-adjust-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.viora-adjust-grid label{display:flex;flex-direction:column;gap:4px;color:#e9eef1;font-size:11px;font-weight:600}
+.viora-adjust-grid input[type=range]{width:100%;accent-color:var(--brand)}
+.viora-pro-editor .crop-tool-btn{min-height:36px;font-weight:600;transition:transform .12s ease,background .12s ease}
+.viora-pro-editor .crop-tool-btn:active{transform:scale(.96)}
+@media(max-width:600px){.viora-adjust-grid{grid-template-columns:1fr}.viora-pro-editor .cropper-controls{padding-bottom:calc(14px + env(safe-area-inset-bottom))}}
 </style>
 </head>
 <body>
 
-<div id="vioraChatLoading" aria-hidden="true"><div class="v9-loading-card"><div class="v9-loading-spinner"></div><div class="v9-loading-title">Loading chats</div><div class="v9-loading-sub">Getting your conversations ready…</div></div></div>
+<div id="vioraChatLoading" aria-hidden="true"><div class="v9-loading-card"><div class="v9-loading-spinner"></div><div class="v9-loading-title" id="vioraLoadingTitle">Loading chats</div><div class="v9-loading-sub" id="vioraLoadingSub">Getting your conversations ready…</div><div class="viora-loading-note">Please wait · Do not close this window</div></div></div>
 
 <!-- SPLASH -->
 <div class="splash" id="splash">
@@ -715,11 +749,115 @@ document.addEventListener("click", e => { if (e.target.matches("[data-close-moda
    State
    ================================================================ */
 let currentUser = null;
+/* ================================================================
+   Viora Offline-First Local Cache
+   Keeps existing Google Sheets features intact while making the UI
+   render from the device immediately. IndexedDB is a cache/queue,
+   not a replacement for the server database.
+   ================================================================ */
+const LOCAL_DB_NAME = "viora-local-v1";
+const LOCAL_DB_VERSION = 1;
+let _localDBPromise = null;
+function localDB(){
+  if(_localDBPromise) return _localDBPromise;
+  _localDBPromise = new Promise((resolve,reject)=>{
+    const r=indexedDB.open(LOCAL_DB_NAME,LOCAL_DB_VERSION);
+    r.onupgradeneeded=()=>{
+      const db=r.result;
+      if(!db.objectStoreNames.contains("meta")) db.createObjectStore("meta");
+      if(!db.objectStoreNames.contains("conversations")) db.createObjectStore("conversations",{keyPath:"conversationId"});
+      if(!db.objectStoreNames.contains("requests")) db.createObjectStore("requests",{keyPath:"requestId"});
+      if(!db.objectStoreNames.contains("messages")){ const st=db.createObjectStore("messages",{keyPath:"messageId"}); st.createIndex("conversationId","conversationId"); }
+      if(!db.objectStoreNames.contains("media")) db.createObjectStore("media",{keyPath:"messageId"});
+      if(!db.objectStoreNames.contains("queue")){ const st=db.createObjectStore("queue",{keyPath:"queueId",autoIncrement:true}); st.createIndex("createdAt","createdAt"); }
+    };
+    r.onsuccess=()=>resolve(r.result); r.onerror=()=>reject(r.error);
+  });
+  return _localDBPromise;
+}
+async function localTx(store,mode,fn){
+  const db=await localDB();
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction(store,mode), os=tx.objectStore(store);
+    let result; try{ result=fn(os,tx); }catch(e){reject(e);return;}
+    tx.oncomplete=()=>resolve(result); tx.onerror=()=>reject(tx.error); tx.onabort=()=>reject(tx.error||new Error("IndexedDB transaction aborted"));
+  });
+}
+async function localPut(store,value){ return localTx(store,"readwrite",os=>os.put(value)); }
+async function localGet(store,key){ const db=await localDB(); return new Promise((res,rej)=>{const tx=db.transaction(store,"readonly"),q=tx.objectStore(store).get(key);q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error)}); }
+async function localGetAll(store){ const db=await localDB(); return new Promise((res,rej)=>{const tx=db.transaction(store,"readonly"),q=tx.objectStore(store).getAll();q.onsuccess=()=>res(q.result||[]);q.onerror=()=>rej(q.error)}); }
+async function localDelete(store,key){ return localTx(store,"readwrite",os=>os.delete(key)); }
+async function localClear(store){ return localTx(store,"readwrite",os=>os.clear()); }
+async function localSetMeta(key,value){ return localPut("meta",{key,value}); }
+async function localGetMeta(key){ const x=await localGet("meta",key); return x?.value; }
+async function cacheConversationData(){
+  if(!currentUser) return;
+  try{
+    await localSetMeta("user",currentUser);
+    await localClear("conversations"); for(const c of State.conversations) await localPut("conversations",c);
+    await localClear("requests"); for(const x of State.requests) await localPut("requests",x);
+    const keep=new Set(State.messages.map(m=>String(m.messageId)));
+    for(const m of State.messages){ await localPut("messages",{...m,conversationId:m.conversationId||State.activeConvId}); }
+    await localSetMeta("lastSync",Date.now());
+  }catch(e){ console.warn("[local cache]",e); }
+}
+async function cacheMessages(messages,conversationId){
+  try{ for(const m of messages||[]) await localPut("messages",{...m,conversationId:m.conversationId||conversationId}); }catch(e){console.warn("[local messages]",e)}
+}
+async function restoreLocalCache(){
+  if(!currentUser) return false;
+  try{
+    const cs=await localGetAll("conversations"), rs=await localGetAll("requests");
+    if(cs.length) { State.conversations=cs; State._convKey=""; renderList(); }
+    if(rs.length) { State.requests=rs; updateRequestBadges(); if(State.tab==="requests") renderList(); }
+    if(State.activeConvId){ const all=await localGetAll("messages"); const ms=all.filter(m=>m.conversationId===State.activeConvId).sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp)); if(ms.length){State.messages=ms;State._messagesKey="";renderMessages(true);} }
+    return cs.length>0 || rs.length>0;
+  }catch(e){console.warn("[local restore]",e);return false;}
+}
+function updateRequestBadges(){
+  const count=(State.requests||[]).length, badge=document.getElementById("reqTabBadge"), notif=document.getElementById("notifBadge");
+  if(!badge||!notif)return;
+  if(count){badge.textContent=count;badge.classList.remove("hidden");notif.textContent=count;notif.classList.remove("hidden");}
+  else{badge.classList.add("hidden");notif.classList.add("hidden");}
+}
+async function queueOfflineAction(action,payload,localMessage,blob){
+  const item={action,payload,createdAt:Date.now(),clientMessageId:localMessage?.messageId||null};
+  if(blob) item.blob=blob;
+  await localPut("queue",item); if(localMessage) await localPut("messages",{...localMessage,conversationId:localMessage.conversationId||State.activeConvId});
+}
+async function getQueue(){return (await localGetAll("queue")).sort((a,b)=>a.createdAt-b.createdAt)}
+async function syncOfflineQueue(){
+  if(!navigator.onLine||!currentUser||State.syncingQueue)return;
+  State.syncingQueue=true;
+  try{
+    const items=await getQueue();
+    for(const item of items){
+      if(!navigator.onLine)break;
+      try{
+        let r;
+        if(item.action==="sendMessage" && item.blob){
+          const f=item.blob, base64=await fileToBase64(f);
+          const up=await API.call("uploadFile",{base64,mime:f.type,name:f.name,size:f.size});
+          if(!up.success) continue;
+          r=await API.call("sendMessage",{...item.payload,fileUrl:up.data.fileUrl,fileId:up.data.fileId});
+        }else r=await API.call(item.action,item.payload);
+        if(r.success){
+          await localDelete("queue",item.queueId);
+          if(item.clientMessageId){ const old=await localGet("messages",item.clientMessageId); const msg=r.data?.message; if(msg) await localDelete("messages",item.clientMessageId); if(msg) await localPut("messages",{...msg,conversationId:item.payload.conversationId,status:msg.status||"sent"}); else if(old) await localPut("messages",{...old,status:"sent"}); }
+        }
+      }catch(e){console.warn("[offline queue]",e);}
+    }
+    if(navigator.onLine){ await loadConversations(); if(State.activeConvId) await loadMessages(); await cacheConversationData(); }
+  }finally{State.syncingQueue=false;}
+}
+window.addEventListener("online",()=>{toast("Back online — syncing…","success",1800);syncOfflineQueue(); if(currentUser){loadConversations();loadRequests();if(State.activeConvId)loadMessages();}});
+window.addEventListener("offline",()=>toast("Offline mode — your chats remain available on this device","default",2200));
+
 const State = {
   conversations: [], requests: [], activeConvId: null, activePeer: null,
   messages: [], replyTo: null, tab: "chats", searchTerm: "",
   pollTimer: null, backupTimer: null, _lastHb: 0, _lastConvPoll: 0, _lastRequestPoll: 0, _pollBusy: false, _messagesKey: "", _convKey: "",
-  selectedMessages: new Set(), selectionMode: false, composerWired: false, sendInFlight: 0, appLoading: false
+  selectedMessages: new Set(), selectionMode: false, composerWired: false, sendInFlight: 0, appLoading: false, syncingQueue: false, localReady: false
 };
 
 /* ================================================================
@@ -762,39 +900,39 @@ function wireAuthUI() {
     }, 400);
   });
 
+  let loginBusy=false;
   loginForm.addEventListener("submit", async e => {
-    e.preventDefault(); clearErr();
-    const fd = new FormData(loginForm);
-    const btn = document.getElementById("loginBtn");
-    btn.disabled = true; btn.innerHTML = "<span class=\"action-spinner\"></span><span>Signing in…</span>";
-    const r = await API.call("login", { username: fd.get("username").trim(), password: fd.get("password") });
-    if (!r.success) { btn.disabled = false; btn.innerHTML = "<span>Sign in</span>"; return showErr(r.message); }
-    btn.innerHTML = "<span class=\"action-spinner\"></span><span>Signed in ✓</span>";
-    currentToken = r.data.token;
-    currentUser = r.data.user;
-    try { sessionStorage.setItem(CONFIG.SESSION_KEY, currentToken); } catch {}
-    await enterApp();
+    e.preventDefault(); if(loginBusy)return; loginBusy=true; clearErr();
+    const fd = new FormData(loginForm), btn = document.getElementById("loginBtn");
+    const username=String(fd.get("username")||"").trim(), password=String(fd.get("password")||"");
+    setVioraBusy("Signing in", "Verifying your account and opening your saved chats…");
+    btn.innerHTML = "<span class=\"action-spinner\"></span><span>Signing in…</span>";
+    try {
+      const r = await API.call("login", { username, password });
+      if (!r.success) { clearVioraBusy(); showErr(r.message); return; }
+      currentToken = r.data.token; currentUser = r.data.user;
+      try { sessionStorage.setItem(CONFIG.SESSION_KEY, currentToken); } catch {}
+      // Restore local cache first; network sync continues after the chat screen appears.
+      await enterApp();
+    } catch(err) { clearVioraBusy(); showErr("Could not sign in. Check your connection and try again."); }
+    finally { clearVioraBusy(); loginBusy=false; btn.innerHTML="<span>Sign in</span>"; }
   });
 
+  let registerBusy=false;
   registerForm.addEventListener("submit", async e => {
-    e.preventDefault(); clearErr();
+    e.preventDefault(); if(registerBusy)return; clearErr();
     const fd = new FormData(registerForm);
     if (fd.get("password") !== fd.get("confirmPassword")) return showErr("Passwords do not match");
-    const btn = document.getElementById("regBtn");
-    btn.disabled = true; btn.innerHTML = "<span class=\"action-spinner\"></span><span>Creating account…</span>";
-    const r = await API.call("register", {
-      fullName: fd.get("fullName").trim(),
-      username: fd.get("username").trim(),
-      password: fd.get("password"),
-      email: (fd.get("email")||"").trim()
-    });
-    if (!r.success) { btn.disabled = false; btn.innerHTML = "<span>Create account</span>"; return showErr(r.message); }
-    btn.innerHTML = "<span class=\"action-spinner\"></span><span>Account created ✓</span>";
-    toast("Account created! Please sign in.", "success");
-    registerForm.reset();
-    document.getElementById("tabLogin").click();
-    document.getElementById("loginUsername").value = fd.get("username").trim();
-    document.getElementById("loginPassword").focus();
+    registerBusy=true; const btn = document.getElementById("regBtn");
+    setVioraBusy("Creating account", "Setting up your profile securely…");
+    btn.innerHTML = "<span class=\"action-spinner\"></span><span>Creating account…</span>";
+    try {
+      const r = await API.call("register", {fullName: fd.get("fullName").trim(), username: fd.get("username").trim(), password: fd.get("password"), email: (fd.get("email")||"").trim()});
+      if (!r.success) { clearVioraBusy(); showErr(r.message); return; }
+      clearVioraBusy(); toast("Account created! Please sign in.", "success"); registerForm.reset();
+      document.getElementById("tabLogin").click(); document.getElementById("loginUsername").value = fd.get("username").trim(); document.getElementById("loginPassword").focus();
+    } catch(err) { clearVioraBusy(); showErr("Could not create account. Check your connection and try again."); }
+    finally {registerBusy=false;btn.innerHTML="<span>Create account</span>";}
   });
 
   document.getElementById("showForgot").addEventListener("click", e => {
@@ -825,33 +963,36 @@ function wireAuthUI() {
   });
 }
 
+function setVioraBusy(title, subtitle){
+  const layer=document.getElementById("vioraChatLoading");
+  const t=document.getElementById("vioraLoadingTitle"), sub=document.getElementById("vioraLoadingSub");
+  if(t)t.textContent=title||"Please wait"; if(sub)sub.textContent=subtitle||"Working securely…";
+  if(layer){layer.classList.add("show");layer.setAttribute("aria-hidden","false");}
+  document.querySelectorAll("#authScreen input, #authScreen button, #authScreen select, #authScreen textarea").forEach(el=>{if(!el.dataset.busyPrev)el.dataset.busyPrev=el.disabled?"1":"0";el.disabled=true;});
+}
+function clearVioraBusy(){
+  const layer=document.getElementById("vioraChatLoading"); if(layer){layer.classList.remove("show");layer.setAttribute("aria-hidden","true");}
+  document.querySelectorAll("#authScreen input, #authScreen button, #authScreen select, #authScreen textarea").forEach(el=>{if(el.dataset.busyPrev!==undefined){el.disabled=el.dataset.busyPrev==="1";delete el.dataset.busyPrev;}});
+}
+
 /* ================================================================
    Main App
    ================================================================ */
 async function enterApp() {
-  const loading = document.getElementById("vioraChatLoading");
-  loading?.classList.add("show");
-  loading?.setAttribute("aria-hidden","false");
-  State.appLoading = true;
-  document.getElementById("authScreen").classList.add("hidden");
-  document.getElementById("appScreen").classList.remove("hidden");
-  renderMe();
-  if (!State.composerWired) { wireComposer(); State.composerWired = true; }
-  try {
-    // Conversations and requests load in parallel; the window stays until both finish.
-    await Promise.all([loadConversations(), loadRequests()]);
-    autoBackupSnapshot();
-    startPolling();
-    startAutoBackup();
-    if("Notification" in window && Notification.permission==="default") { Notification.requestPermission().catch(()=>{}); }
-    API.call("heartbeat").catch(() => {});
-  } finally {
-    State.appLoading = false;
-    requestAnimationFrame(() => {
-      loading?.classList.remove("show");
-      loading?.setAttribute("aria-hidden","true");
-    });
-  }
+  const loading=document.getElementById("vioraChatLoading");if(loading && !loading.classList.contains("show")){const t=document.getElementById("vioraLoadingTitle"),sub=document.getElementById("vioraLoadingSub");if(t)t.textContent="Opening Viora";if(sub)sub.textContent="Restoring chats saved on this device…";loading.classList.add("show");loading.setAttribute("aria-hidden","false");}State.appLoading=true;
+  document.getElementById("authScreen").classList.add("hidden");document.getElementById("appScreen").classList.remove("hidden");renderMe();
+  if(!State.composerWired){wireComposer();State.composerWired=true;}
+  try{
+    // Local data is rendered first. Server sync is deliberately non-blocking.
+    await restoreLocalCache(); State.localReady=true;
+    loading?.classList.remove("show");loading?.setAttribute("aria-hidden","true");
+    if(navigator.onLine){
+      Promise.allSettled([loadConversations(),loadRequests(),syncOfflineQueue()]).then(()=>{autoBackupSnapshot();});
+      API.call("heartbeat").catch(()=>{});
+    }
+    startPolling();startAutoBackup();
+    if("Notification" in window&&Notification.permission==="default")Notification.requestPermission().catch(()=>{});
+  } finally { State.appLoading=false; requestAnimationFrame(()=>{loading?.classList.remove("show");loading?.setAttribute("aria-hidden","true");}); }
 }
 function renderMe() {
   if (!currentUser) return;
@@ -864,14 +1005,17 @@ function renderMe() {
   document.getElementById("meUsername").textContent = "@" + currentUser.username;
 }
 
+function hiddenConversationIds(){try{return new Set(JSON.parse(localStorage.getItem("viora_hidden_conversations_v1")||"[]"));}catch{return new Set();}}
+async function hideConversationLocally(id){const set=hiddenConversationIds();set.add(String(id));try{localStorage.setItem("viora_hidden_conversations_v1",JSON.stringify([...set]));}catch{}State.conversations=State.conversations.filter(c=>String(c.conversationId)!==String(id));await localClear("conversations");for(const c of State.conversations)await localPut("conversations",c);await localRemoveConversationMessages(id);}
+async function localRemoveConversationMessages(id){const all=await localGetAll("messages").catch(()=>[]);for(const m of all.filter(x=>String(x.conversationId)===String(id)))await localDelete("messages",m.messageId).catch(()=>{});if(State.activeConvId===id)State.messages=[];}
+
 async function loadConversations() {
+  if(!navigator.onLine){ return restoreLocalCache(); }
   const r = await API.call("getConversations");
-  if (!r.success) return;
-  const next = (r.data.conversations || []).map(c => {
+  if (!r.success) { await restoreLocalCache(); return; }
+  const hidden=hiddenConversationIds(); const next = (r.data.conversations || []).filter(c=>!hidden.has(String(c.conversationId))).map(c => {
     const out = {...c};
-    // If the conversation is currently open, its messages are considered seen locally.
     if (State.activeConvId && out.conversationId === State.activeConvId) out.unreadCount = 0;
-    // Keep the home-screen tick synchronized with the same local status used in the open chat.
     if (out.conversationId === State.activeConvId && out.lastMessageSenderId === currentUser?.userId && State.messages.length) {
       const latestOut = [...State.messages].reverse().find(m => m.senderId === currentUser.userId);
       if (latestOut) out.lastMessageStatus = messageStatus(latestOut);
@@ -881,20 +1025,16 @@ async function loadConversations() {
   const key = JSON.stringify(next.map(c => [c.conversationId,c.lastMessage,c.lastActivity,c.unreadCount,c.lastMessageStatus,c.online,c.avatarUrl]));
   State.conversations = next;
   if ((State.tab === "chats" || State.tab === "friends") && key !== State._convKey) { State._convKey = key; renderList(); }
+  await localClear("conversations"); for(const c of next) await localPut("conversations",c);
+  await localSetMeta("lastConvSync",Date.now());
 }
 async function loadRequests() {
+  if(!navigator.onLine){ const rs=await localGetAll("requests"); if(rs.length){State.requests=rs;updateRequestBadges();if(State.tab==="requests")renderList();} return; }
   const r = await API.call("getPendingRequests");
   if (!r.success) return;
   State.requests = r.data.requests || [];
-  const badge = document.getElementById("reqTabBadge");
-  const notif = document.getElementById("notifBadge");
-  const count = State.requests.length;
-  if (count > 0) {
-    badge.textContent = count; badge.classList.remove("hidden");
-    notif.textContent = count; notif.classList.remove("hidden");
-  } else {
-    badge.classList.add("hidden"); notif.classList.add("hidden");
-  }
+  updateRequestBadges();
+  await localClear("requests"); for(const x of State.requests) await localPut("requests",x);
   if (State.tab === "requests") renderList();
 }
 function renderList() {
@@ -993,8 +1133,8 @@ function renderList() {
         {emoji:"💬",label:"Open chat",action:()=>openConversation(c.conversationId)},
         {emoji:"🗑️",label:"Delete chat for me",danger:true,action:async()=>{
           if(!await confirmAction("Delete this chat?","This removes the conversation from your view.")) return;
-          const r=await API.call("clearChat",{conversationId:c.conversationId});
-          if(r.success){ if(State.activeConvId===c.conversationId) closeChat(); await loadConversations(); toast("Chat deleted","success"); } else toast(r.message||"Could not delete chat","error");
+          const cid=c.conversationId; const r=await API.call("clearChat",{conversationId:cid});
+          if(r.success){ await hideConversationLocally(cid); if(State.activeConvId===cid)closeChat(); State.conversations=State.conversations.filter(x=>x.conversationId!==cid);State._convKey="";renderList();await loadConversations();toast("Chat deleted from your home list","success"); } else toast(r.message||"Could not delete chat","error");
         }}
       ]),n);
     });
@@ -1035,6 +1175,7 @@ async function openConversation(id) {
   conv.unreadCount = 0;
   State.messages = [];
   State.replyTo = null;
+  if(!navigator.onLine){ const all=await localGetAll("messages"); const cached=all.filter(m=>m.conversationId===id).sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp)); if(cached.length){State.messages=cached;State._messagesKey="";renderMessages(true);} }
   document.getElementById("chatEmpty").classList.add("hidden");
   document.getElementById("chatActive").classList.remove("hidden");
   document.getElementById("chatPanel").classList.add("open");
@@ -1076,34 +1217,34 @@ async function notifyIncomingMessage(m){
 
 async function loadMessages() {
   if (!State.activeConvId) return;
-  const activeId = State.activeConvId;
-  const before = State.messages.slice();
-  const r = await API.call("getMessages", { conversationId: activeId, limit: CONFIG.MESSAGES_PAGE });
-  // Ignore a late response if the user already moved to another chat.
-  if (State.activeConvId !== activeId) return;
-  if (!r.success) return;
-  const next = r.data.messages || [];
-  const previousIds = new Set(before.map(m=>String(m.messageId)));
-  const pending = before.filter(m => String(m.messageId).startsWith("tmp_") && (m.status === "sending" || m.status === "uploading"));
-  next.filter(m=>!previousIds.has(String(m.messageId)) && m.senderId!==currentUser.userId).forEach(notifyIncomingMessage);
-  const serverIds = new Set(next.map(m => String(m.messageId)));
-  const stillPending = pending.filter(m => !serverIds.has(String(m.messageId)) && !next.some(n => n.senderId===m.senderId && n.text===m.text && Math.abs(new Date(n.timestamp)-new Date(m.timestamp))<10000));
-
-  // Some Apps Script/Sheets reads can briefly return a partial page while a send is being written.
-  // Never throw away messages already visible in the chat during that short window.
-  const oldReal = before.filter(m => !String(m.messageId).startsWith("tmp_"));
-  const responseLooksPartial = next.length < oldReal.length && (State.sendInFlight > 0 || pending.length > 0);
-  const byId = new Map(next.map(m => [String(m.messageId), m]));
-  if (responseLooksPartial) oldReal.forEach(m => { if (!byId.has(String(m.messageId))) byId.set(String(m.messageId), m); });
-  stillPending.forEach(m => { if (!byId.has(String(m.messageId))) byId.set(String(m.messageId), m); });
-  const merged = [...byId.values()].sort((a,b) => new Date(a.timestamp)-new Date(b.timestamp));
-  const key = JSON.stringify(merged.map(m => [m.messageId,m.status,m.text,m.timestamp,m.deletedForEveryone,m.editedAt,m.fileUrl,m.readAt,m.deliveredAt,m.seen]));
-  if (key === State._messagesKey) return;
-  const w = document.getElementById("messagesWrap");
-  const wasNearBottom = w ? (w.scrollHeight - w.scrollTop - w.clientHeight < 180) : true;
-  State.messages = merged;
-  State._messagesKey = key;
-  renderMessages(wasNearBottom || stillPending.length > 0);
+  const activeId=State.activeConvId;
+  // Paint device cache immediately while online refresh runs in the background.
+  const cachedAll=await localGetAll("messages").catch(()=>[]);
+  const cached=cachedAll.filter(m=>m.conversationId===activeId && !m._locallyDeleted).sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
+  if(State.activeConvId!==activeId)return;
+  if(cached.length && !State.messages.length){State.messages=cached;State._messagesKey="";renderMessages(false);}
+  if(!navigator.onLine){if(cached.length){State.messages=cached;State._messagesKey="";renderMessages(false);}return;}
+  const before=State.messages.filter(m=>!m._locallyDeleted);
+  let r; try { r=await API.call("getMessages",{conversationId:activeId,limit:CONFIG.MESSAGES_PAGE}); } catch(e) { return; }
+  if(State.activeConvId!==activeId || !r?.success)return;
+  const server=(r.data.messages||[]);
+  server.filter(m=>!before.some(b=>String(b.messageId)===String(m.messageId)) && m.senderId!==currentUser.userId).forEach(notifyIncomingMessage);
+  const fp=m=>`${m.senderId||""}|${m.messageType||"text"}|${String(m.text||"").trim()}|${m.fileName||""}`;
+  const merged=new Map();
+  // Server IDs are canonical. Keep local-only/pending rows unless matched to a server echo.
+  server.forEach(m=>merged.set(String(m.messageId),m));
+  const locals=[...cached,...before].filter(m=>String(m.messageId).startsWith("tmp_") || m.status==="pending" || m.status==="sending" || m.status==="uploading");
+  for(const local of locals){
+    if(local._locallyDeleted)continue;
+    const echoed=server.some(m=>(m.clientMessageId && m.clientMessageId===local.messageId) || (m.senderId===local.senderId && fp(m)===fp(local) && Math.abs(new Date(m.timestamp)-new Date(local.timestamp))<12000));
+    if(!echoed && !merged.has(String(local.messageId)))merged.set(String(local.messageId),local);
+  }
+  // Keep cached older rows if server pagination returns fewer rows; explicit local deletion markers win.
+  const locallyDeleted=new Set(cachedAll.filter(m=>m._locallyDeleted).map(m=>String(m.messageId)));
+  for(const old of before){if(!locallyDeleted.has(String(old.messageId))&&!merged.has(String(old.messageId))&&!String(old.messageId).startsWith("tmp_"))merged.set(String(old.messageId),old);}
+  State.messages=[...merged.values()].filter(m=>!m._locallyDeleted).sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
+  State._messagesKey="";renderMessages(false);
+  for(const m of State.messages){if(!String(m.messageId).startsWith("tmp_"))await localPut("messages",m).catch(()=>{});}
 }
 
 function renderMessages(forceBottom = false) {
@@ -1144,6 +1285,7 @@ function renderMessageHtml(m, me) {
     body += `<span class="text">${H.esc(m.text||"").replace(/(https?:\/\/[^\s<]+)/g,'<a href="$1" target="_blank" rel="noopener">$1</a>')}</span>`;
   } else if (m.messageType === "image") {
     body += `<img class="msg-image" src="${H.esc(H.fileSrc(m.fileUrl))}" data-img="${H.esc(H.fileSrc(m.fileUrl))}" loading="lazy">`;
+    body += `<a class="photo-download-link" href="${H.esc(H.fileSrc(m.fileUrl))}" download="${H.esc(m.fileName||"viora-photo.jpg")}" target="_blank" rel="noopener">⬇ Download photo</a>`;
     if (m.text) body += `<span class="text">${H.esc(m.text)}</span>`;
   } else if (m.messageType === "video") {
     body += `<video class="msg-video" src="${H.esc(m.fileUrl)}" controls preload="metadata"></video>`;
@@ -1196,10 +1338,43 @@ function bindMessageEvents() {
         if (t) { t.scrollIntoView({behavior:"smooth",block:"center"}); t.querySelector(".bubble").style.outline="2px solid var(--brand)"; setTimeout(()=>t.querySelector(".bubble").style.outline="",1200); }
       }
     });
-    let pt;
-    row.addEventListener("touchstart", () => { pt = setTimeout(() => openMessageMenu(row.dataset.messageId, row), 500); }, { passive: true });
-    row.addEventListener("touchend", () => clearTimeout(pt));
-    row.addEventListener("touchmove", () => clearTimeout(pt));
+
+    let pressTimer=null, startX=0, startY=0, swiping=false, moved=false;
+    const clearPress=()=>{ if(pressTimer){clearTimeout(pressTimer);pressTimer=null;} };
+    const start=(x,y)=>{
+      startX=x; startY=y; swiping=false; moved=false;
+      clearPress();
+      pressTimer=setTimeout(()=>{
+        if(!moved && !swiping) openMessageMenu(row.dataset.messageId,row);
+      },520);
+    };
+    const move=(x,y)=>{
+      const dx=x-startX, dy=y-startY;
+      if(Math.abs(dx)>8 || Math.abs(dy)>8) moved=true;
+      if(Math.abs(dx)>Math.abs(dy) && Math.abs(dx)>12){
+        clearPress(); swiping=true;
+        const dir = row.classList.contains("out") ? -1 : 1;
+        const distance=Math.min(78,Math.max(0,Math.abs(dx)));
+        if((dir<0 && dx<0) || (dir>0 && dx>0)){
+          row.style.transform=`translateX(${dir*distance}px)`;
+          row.classList.add("swipe-ready");
+        }
+      }
+    };
+    const end=(x,y)=>{
+      clearPress();
+      const dx=x-startX, dy=y-startY;
+      if(swiping && Math.abs(dx)>58 && Math.abs(dx)>Math.abs(dy)*1.25){
+        startReply(State.messages.find(m=>String(m.messageId)===String(row.dataset.messageId)));
+      }
+      row.style.transform="";
+      row.classList.remove("swipe-ready");
+      swiping=false;
+    };
+    row.addEventListener("touchstart",e=>{const t=e.touches[0];start(t.clientX,t.clientY);},{passive:true});
+    row.addEventListener("touchmove",e=>{const t=e.touches[0];move(t.clientX,t.clientY);},{passive:true});
+    row.addEventListener("touchend",e=>{const t=e.changedTouches[0];end(t.clientX,t.clientY);},{passive:true});
+    row.addEventListener("touchcancel",()=>{clearPress();row.style.transform="";row.classList.remove("swipe-ready");});
   });
 }
 function openMessageMenu(messageId, rowEl) {
@@ -1213,6 +1388,7 @@ function openMessageMenu(messageId, rowEl) {
     { label: "React ❤️", emoji: "❤️", fn: () => API.call("addReaction", { messageId, reaction: "❤️" }).then(loadMessages) },
     { label: "React 👍", emoji: "👍", fn: () => API.call("addReaction", { messageId, reaction: "👍" }).then(loadMessages) },
     { label: "React 😂", emoji: "😂", fn: () => API.call("addReaction", { messageId, reaction: "😂" }).then(loadMessages) },
+    ...(m.reactions && Object.values(m.reactions).some(users => Array.isArray(users) ? users.map(String).includes(String(currentUser.userId)) : false) ? [{ label: "Remove my reaction", emoji: "↩️", fn: async () => { const rr=await API.call("removeReaction", { messageId }); if(rr.success){await loadMessages();toast("Reaction removed","success");}else toast(rr.message||"Reaction removal needs backend support","error"); } }] : []),
     ...(isMine && m.messageType === "text" && !m.deletedForEveryone ? [{ label: "Edit", emoji: "✏️", fn: () => editMsg(m) }] : []),
     { label: "Delete for me", emoji: "🗑️", danger: true, fn: () => delMsg(m, "me") },
     ...(isMine && !m.deletedForEveryone ? [{ label: "Delete for everyone", emoji: "❌", danger: true, fn: () => delMsg(m, "everyone") }] : [])
@@ -1254,64 +1430,41 @@ async function delMsg(m, scope) {
 
 async function sendText(text) {
   if (!text || !State.activeConvId) return;
-  const form = document.getElementById("composer");
-  if (form.dataset.sending === "1") return;
-  form.dataset.sending = "1";
-  State.sendInFlight = (State.sendInFlight || 0) + 1;
-  const tempId = "tmp_" + Date.now() + Math.random().toString(36).slice(2,6);
-  const replyId = State.replyTo ? State.replyTo.messageId : null;
-  State.messages.push({ messageId: tempId, senderId: currentUser.userId, senderName: currentUser.fullName, messageType: "text", text, timestamp: new Date().toISOString(), status: "sending", reactions: {}, replyTo: State.replyTo ? { messageId: replyId, senderName: State.replyTo.senderId === currentUser.userId ? "You" : State.replyTo.senderName, preview: (State.replyTo.text||"").slice(0,60) } : null });
-  State._messagesKey = ""; cancelReply(); inputReset(); renderMessages(true);
-  try {
-    const r = await API.call("sendMessage", { conversationId: State.activeConvId, messageType: "text", text, replyToMessageId: replyId });
-    const i = State.messages.findIndex(x => x.messageId === tempId);
-    if (r.success && i > -1) State.messages[i] = r.data?.message ? { ...r.data.message, status: r.data.message.status || "sent" } : { ...State.messages[i], status:"sent" };
-    else if (i > -1) State.messages[i].status = "failed";
-    State._messagesKey = ""; renderMessages(true);
-    if (r.success) {
-      const conv = State.conversations.find(c => c.conversationId === State.activeConvId);
-      const local = State.messages.find(x => x.messageId === tempId) || (r.data?.message);
-      if (conv && local) {
-        conv.lastMessageStatus = messageStatus(local);
-        conv.lastMessageSenderId = currentUser.userId;
-        conv.lastMessage = text;
-        conv.unreadCount = 0;
-      }
-      loadConversations(); autoBackupSnapshot();
-    } else toast(r.message || "Message failed", "error");
-  } finally { State.sendInFlight = Math.max(0,(State.sendInFlight||1)-1); form.dataset.sending = ""; }
+  const form = document.getElementById("composer"); if (form.dataset.sending === "1") return;
+  form.dataset.sending = "1"; State.sendInFlight=(State.sendInFlight||0)+1;
+  const tempId="tmp_"+Date.now()+Math.random().toString(36).slice(2,6), replyId=State.replyTo?State.replyTo.messageId:null;
+  const localMessage={messageId:tempId,conversationId:State.activeConvId,senderId:currentUser.userId,senderName:currentUser.fullName,messageType:"text",text,timestamp:new Date().toISOString(),status:navigator.onLine?"sending":"pending",reactions:{},replyTo:State.replyTo?{messageId:replyId,senderName:State.replyTo.senderId===currentUser.userId?"You":State.replyTo.senderName,preview:(State.replyTo.text||"").slice(0,60)}:null};
+  State.messages.push(localMessage); State._messagesKey=""; cancelReply(); inputReset(); renderMessages(true); await localPut("messages",localMessage);
+  const payload={conversationId:State.activeConvId,messageType:"text",text,replyToMessageId:replyId,clientMessageId:tempId};
+  try{
+    if(!navigator.onLine){ await queueOfflineAction("sendMessage",payload,localMessage); toast("Saved offline — will send when you’re back online","success"); return; }
+    const r=await API.call("sendMessage",payload), i=State.messages.findIndex(x=>x.messageId===tempId);
+    if(r.success&&i>-1){State.messages[i]=r.data?.message?{...r.data.message,status:r.data.message.status||"sent"}:{...State.messages[i],status:"sent"};await localDelete("messages",tempId);await localPut("messages",{...State.messages[i],conversationId:State.activeConvId});}
+    else if(i>-1){State.messages[i].status="failed";await localPut("messages",State.messages[i]);}
+    State._messagesKey="";renderMessages(true);
+    if(r.success){const conv=State.conversations.find(c=>c.conversationId===State.activeConvId);const local=State.messages.find(x=>x.messageId===tempId)||r.data?.message;if(conv&&local){conv.lastMessageStatus=messageStatus(local);conv.lastMessageSenderId=currentUser.userId;conv.lastMessage=text;conv.unreadCount=0;}loadConversations();autoBackupSnapshot();}else toast(r.message||"Message failed","error");
+  }catch(e){await queueOfflineAction("sendMessage",payload,localMessage);toast("Connection lost — message saved and will send automatically","default");}
+  finally{State.sendInFlight=Math.max(0,(State.sendInFlight||1)-1);form.dataset.sending="";}
 }
 function inputReset(){ const input=document.getElementById("messageInput"); input.value=""; autoResize(); updateSendButton(); }
 async function sendFile(file) {
   if (!file || !State.activeConvId) return;
-  if (file.size > CONFIG.MAX_FILE_MB * 1024 * 1024) { toast(`File too large (max ${CONFIG.MAX_FILE_MB} MB)`, "error"); return; }
-  State.sendInFlight = (State.sendInFlight || 0) + 1;
-  const isImage = file.type.startsWith("image/");
-  const isVideo = file.type.startsWith("video/");
-  const tempId = "tmp_file_" + Date.now();
-  let previewUrl = "";
-  if (isImage || isVideo) previewUrl = URL.createObjectURL(file);
-  State.messages.push({ messageId: tempId, senderId: currentUser.userId, senderName: currentUser.fullName, messageType: isImage ? "image" : isVideo ? "video" : "file", text:"", fileName:file.name, fileUrl:previewUrl, fileSize:file.size, timestamp:new Date().toISOString(), status:"uploading", reactions:{} });
-  State._messagesKey=""; renderMessages(true);
-  try {
-    let base64, mime=file.type;
-    if (isImage) { const c=await compressImage(file); base64=c.base64; mime=c.mime; }
-    else base64=await fileToBase64(file);
-    const up=await API.call("uploadFile",{base64,mime,name:file.name,size:file.size});
-    if(!up.success) throw new Error(up.message||"Upload failed");
-    const r=await API.call("sendMessage",{conversationId:State.activeConvId,messageType:isImage?"image":isVideo?"video":"file",fileName:file.name,fileUrl:up.data.fileUrl,fileId:up.data.fileId,fileSize:file.size,replyToMessageId:State.replyTo?State.replyTo.messageId:null});
-    const i=State.messages.findIndex(x=>x.messageId===tempId);
-    if(r.success && i>-1){ State.messages[i]=r.data?.message?{...r.data.message,status:r.data.message.status||"sent"}:{...State.messages[i],fileUrl:up.data.fileUrl,status:"sent"}; }
-    else if(i>-1) State.messages[i].status="failed";
-    State._messagesKey=""; renderMessages(true);
-    if(r.success){
-      const conv=State.conversations.find(c=>c.conversationId===State.activeConvId);
-      const local=State.messages.find(x=>x.messageId===tempId) || r.data?.message;
-      if(conv && local){ conv.lastMessageStatus=messageStatus(local); conv.lastMessageSenderId=currentUser.userId; conv.lastMessage="📎 Attachment"; conv.unreadCount=0; }
-      loadConversations();autoBackupSnapshot();
-    } else toast(r.message||"Send failed","error");
-  }catch(e){ const i=State.messages.findIndex(x=>x.messageId===tempId); if(i>-1) State.messages[i].status="failed"; State._messagesKey=""; renderMessages(true); toast(e.message||"Upload failed","error"); }
-  finally { State.sendInFlight=Math.max(0,(State.sendInFlight||1)-1); if(previewUrl) setTimeout(()=>URL.revokeObjectURL(previewUrl),60000); cancelReply(); }
+  const composer=document.getElementById("composer"); if(composer?.dataset.fileSending==="1")return; if(composer)composer.dataset.fileSending="1";
+  if (file.size > CONFIG.MAX_FILE_MB*1024*1024){if(composer)composer.dataset.fileSending="";{toast(`File too large (max ${CONFIG.MAX_FILE_MB} MB)`,`error`);return;} }
+  State.sendInFlight=(State.sendInFlight||0)+1;
+  const isImage=file.type.startsWith("image/"),isVideo=file.type.startsWith("video/"),tempId="tmp_file_"+Date.now()+Math.random().toString(36).slice(2,5);
+  let previewUrl=""; if(isImage||isVideo)previewUrl=URL.createObjectURL(file);
+  const localMessage={messageId:tempId,conversationId:State.activeConvId,senderId:currentUser.userId,senderName:currentUser.fullName,messageType:isImage?"image":isVideo?"video":"file",text:"",fileName:file.name,fileUrl:previewUrl,fileSize:file.size,timestamp:new Date().toISOString(),status:navigator.onLine?"uploading":"pending",reactions:{}};
+  State.messages.push(localMessage);State._messagesKey="";renderMessages(true);await localPut("messages",localMessage);
+  try{
+    if(!navigator.onLine){await queueOfflineAction("sendMessage",{conversationId:State.activeConvId,messageType:isImage?"image":isVideo?"video":"file",fileName:file.name,fileSize:file.size,replyToMessageId:State.replyTo?State.replyTo.messageId:null,clientMessageId:tempId},localMessage,file);toast("File saved offline — will upload when you’re back online","success");return;}
+    let base64,mime=file.type;if(isImage){const c=await compressImage(file);base64=c.base64;mime=c.mime;}else base64=await fileToBase64(file);
+    const up=await API.call("uploadFile",{base64,mime,name:file.name,size:file.size});if(!up.success)throw new Error(up.message||"Upload failed");
+    const r=await API.call("sendMessage",{conversationId:State.activeConvId,messageType:isImage?"image":isVideo?"video":"file",fileName:file.name,fileUrl:up.data.fileUrl,fileId:up.data.fileId,fileSize:file.size,replyToMessageId:State.replyTo?State.replyTo.messageId:null,clientMessageId:tempId});
+    const i=State.messages.findIndex(x=>x.messageId===tempId);if(r.success&&i>-1){State.messages[i]=r.data?.message?{...r.data.message,status:r.data.message.status||"sent"}:{...State.messages[i],fileUrl:up.data.fileUrl,status:"sent"};await localDelete("messages",tempId);await localPut("messages",{...State.messages[i],conversationId:State.activeConvId});}else if(i>-1){State.messages[i].status="failed";await localPut("messages",State.messages[i]);}
+    State._messagesKey="";renderMessages(true);if(r.success){const conv=State.conversations.find(c=>c.conversationId===State.activeConvId),local=State.messages.find(x=>x.messageId===tempId)||r.data?.message;if(conv&&local){conv.lastMessageStatus=messageStatus(local);conv.lastMessageSenderId=currentUser.userId;conv.lastMessage="📎 Attachment";conv.unreadCount=0;}loadConversations();autoBackupSnapshot();}else toast(r.message||"Send failed","error");
+  }catch(e){await queueOfflineAction("sendMessage",{conversationId:State.activeConvId,messageType:isImage?"image":isVideo?"video":"file",fileName:file.name,fileSize:file.size,replyToMessageId:State.replyTo?State.replyTo.messageId:null,clientMessageId:tempId},localMessage,file);toast("Connection lost — file saved for automatic upload","default");}
+  finally{State.sendInFlight=Math.max(0,(State.sendInFlight||1)-1);if(composer)composer.dataset.fileSending="";if(previewUrl)setTimeout(()=>URL.revokeObjectURL(previewUrl),60000);cancelReply();}
 }
 function fileToBase64(f) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = rej; r.readAsDataURL(f); }); }
 function compressImage(file) {
@@ -1380,7 +1533,7 @@ function openMediaPreview(file){
   const url=URL.createObjectURL(file);
   if(isImage){
     let sendFileObj=file;
-    openModal(`<button class="modal-close" data-close-modal>✕</button><h2>Preview photo</h2><img id="mediaPreviewImg" class="preview-image" src="${url}"><button type="button" class="v9-crop-btn" id="previewCrop">✂️ Crop photo</button><div class="preview-tools"><label style="font-size:12px;color:var(--text-muted)">Brightness</label><input id="previewBright" type="range" min="70" max="130" value="100"><span id="brightVal">100%</span></div><div class="modal-actions"><button class="btn btn-ghost" id="previewCancel">Cancel</button><button class="btn btn-primary" id="previewSend">Send photo</button></div>`);
+    openModal(`<button class="modal-close" data-close-modal>✕</button><h2>Photo preview</h2><img id="mediaPreviewImg" class="preview-image" src="${url}"><button type="button" class="v9-crop-btn" id="previewCrop">✂️ Crop & adjust</button><div class="preview-tools"><label style="font-size:12px;color:var(--text-muted)">Brightness</label><input id="previewBright" type="range" min="70" max="130" value="100"><span id="brightVal">100%</span></div><div class="modal-actions"><button class="btn btn-ghost" id="previewCancel">Cancel</button><button class="btn btn-primary" id="previewSend">Send photo</button></div>`);
     const img=document.getElementById("mediaPreviewImg"), slider=document.getElementById("previewBright"), val=document.getElementById("brightVal");
     slider.oninput=()=>{val.textContent=slider.value+"%";img.style.filter=`brightness(${slider.value}%)`;};
     document.getElementById("previewCrop").onclick=()=>{
@@ -1724,82 +1877,116 @@ function openProfileModal() {
 function openCropper(file, onSave) {
   const reader = new FileReader();
   reader.onload = () => {
-    const root = document.createElement("div");
-    root.className = "cropper-modal";
-    root.innerHTML = `
+    const root=document.createElement("div"); root.className="cropper-modal viora-pro-editor";
+    root.innerHTML=`
       <div class="cropper-header">
         <button id="cropCancel">Cancel</button>
-        <div style="font-weight:600">Crop photo</div>
-        <button id="cropSave" class="primary">Save</button>
+        <div style="font-weight:800">Photo editor</div>
+        <button id="cropSave" class="primary">Done</button>
       </div>
-      <div class="cropper-canvas-wrap"><canvas id="cropCanvas"></canvas></div>
+      <div class="cropper-canvas-wrap" style="position:relative">
+        <canvas id="cropCanvas"></canvas>
+        <div class="viora-editor-badge">Drag • Pinch • Zoom</div>
+      </div>
       <div class="cropper-controls">
-        <label style="color:#fff;font-size:13px;display:flex;align-items:center;gap:12px">
-          <span>Zoom</span>
-          <input type="range" id="cropZoom" min="1" max="3" step="0.01" value="1">
-        </label>
-        <div style="color:#888;font-size:12px;text-align:center">Drag to move. Use slider to zoom.</div>
+        <div class="crop-aspect-row">
+          <button class="crop-aspect-btn active" data-ratio="1">1:1</button>
+          <button class="crop-aspect-btn" data-ratio="1.333333">4:3</button>
+          <button class="crop-aspect-btn" data-ratio="1.777778">16:9</button>
+          <button class="crop-aspect-btn" data-ratio="0.75">3:4</button>
+          <button class="crop-aspect-btn" data-ratio="0.5625">9:16</button>
+        </div>
+        <div class="crop-extra-row">
+          <button class="crop-tool-btn" id="cropRotateL">↶ Rotate</button>
+          <button class="crop-tool-btn" id="cropRotateR">↷ Rotate</button>
+          <button class="crop-tool-btn" id="cropFlipX">↔ Flip</button>
+          <button class="crop-tool-btn" id="cropReset">Reset</button>
+        </div>
+        <div class="viora-adjust-grid">
+          <label>Zoom <input type="range" id="cropZoom" min="1" max="4" step="0.01" value="1"></label>
+          <label>Brightness <input type="range" id="cropBrightness" min="70" max="130" value="100"></label>
+          <label>Contrast <input type="range" id="cropContrast" min="70" max="130" value="100"></label>
+          <label>Saturation <input type="range" id="cropSaturation" min="0" max="180" value="100"></label>
+        </div>
+        <div class="crop-hint">Drag to position • pinch with two fingers to zoom • rotate/flip and adjust the image before saving</div>
       </div>`;
     document.body.appendChild(root);
-    const canvas = root.querySelector("#cropCanvas");
-    const ctx = canvas.getContext("2d");
-    const img = new Image();
-    img.src = reader.result;
-    let scale = 1, offsetX = 0, offsetY = 0, baseSize = 0;
 
-    img.onload = () => {
-      const size = Math.min(window.innerWidth - 40, window.innerHeight - 220, 400);
-      canvas.width = size; canvas.height = size;
-      canvas.style.width = size + "px"; canvas.style.height = size + "px";
-      baseSize = size;
-      draw();
-    };
-    function draw() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      const s = baseSize * scale;
-      const ratio = img.width / img.height;
-      let w = s, h = s;
-      if (ratio > 1) { w = s; h = s / ratio; } else { h = s; w = s * ratio; }
-      const x = (canvas.width - w) / 2 + offsetX;
-      const y = (canvas.height - h) / 2 + offsetY;
-      ctx.fillStyle = "#20282d";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(canvas.width / 2, canvas.height / 2, canvas.width / 2, 0, Math.PI * 2);
-      ctx.clip();
-      ctx.drawImage(img, x, y, w, h);
-      ctx.restore();
+    const canvas=root.querySelector("#cropCanvas"),ctx=canvas.getContext("2d"),img=new Image();
+    img.src=reader.result;
+    let ratio=1,zoom=1,offsetX=0,offsetY=0,drag=false,sx=0,sy=0,lastDist=0;
+    let rotation=0,flipX=1,brightness=100,contrast=100,saturation=100;
+
+    function resizeCanvas(){
+      const maxW=Math.min(window.innerWidth-28,560), maxH=Math.min(window.innerHeight-320,560);
+      let w=maxW,h=w/ratio; if(h>maxH){h=maxH;w=h*ratio;}
+      canvas.width=Math.max(1,Math.round(w)); canvas.height=Math.max(1,Math.round(h)); draw();
     }
-    let dragging = false, sx = 0, sy = 0;
-    canvas.addEventListener("mousedown", e => { dragging = true; sx = e.clientX - offsetX; sy = e.clientY - offsetY; });
-    window.addEventListener("mousemove", e => { if (dragging) { offsetX = e.clientX - sx; offsetY = e.clientY - sy; draw(); } });
-    window.addEventListener("mouseup", () => dragging = false);
-    canvas.addEventListener("touchstart", e => { dragging = true; sx = e.touches[0].clientX - offsetX; sy = e.touches[0].clientY - offsetY; }, { passive: true });
-    canvas.addEventListener("touchmove", e => { if (dragging) { offsetX = e.touches[0].clientX - sx; offsetY = e.touches[0].clientY - sy; draw(); } }, { passive: true });
-    canvas.addEventListener("touchend", () => dragging = false);
-    root.querySelector("#cropZoom").addEventListener("input", e => { scale = parseFloat(e.target.value); draw(); });
-    root.querySelector("#cropCancel").addEventListener("click", () => root.remove());
-    root.querySelector("#cropSave").addEventListener("click", () => {
-      const out = document.createElement("canvas");
-      out.width = 400; out.height = 400;
-      const octx = out.getContext("2d");
-      const s = baseSize * scale;
-      const ratio = img.width / img.height;
-      let w = s, h = s;
-      if (ratio > 1) { w = s; h = s / ratio; } else { h = s; w = s * ratio; }
-      const x = (canvas.width - w) / 2 + offsetX;
-      const y = (canvas.height - h) / 2 + offsetY;
-      octx.fillStyle = "#ffffff";
-      octx.fillRect(0,0,400,400);
-      octx.drawImage(img, x * (400 / canvas.width), y * (400 / canvas.height), w * (400 / canvas.width), h * (400 / canvas.height));
-      const b64 = out.toDataURL("image/jpeg", 0.88).split(",")[1];
-      root.remove();
-      onSave(b64);
-    });
+    function cover(){
+      const rad=(rotation%360)*Math.PI/180;
+      const rotatedW=Math.abs(img.width*Math.cos(rad))+Math.abs(img.height*Math.sin(rad));
+      const rotatedH=Math.abs(img.width*Math.sin(rad))+Math.abs(img.height*Math.cos(rad));
+      const scale=Math.max(canvas.width/rotatedW,canvas.height/rotatedH)*zoom;
+      const w=rotatedW*scale,h=rotatedH*scale;
+      return {w,h,x:(canvas.width-w)/2+offsetX,y:(canvas.height-h)/2+offsetY,scale};
+    }
+    function clamp(){
+      const c=cover(),minX=Math.min(0,canvas.width-c.w),maxX=Math.max(0,canvas.width-c.w);
+      const minY=Math.min(0,canvas.height-c.h),maxY=Math.max(0,canvas.height-c.h);
+      offsetX=Math.max(minX,Math.min(maxX,offsetX)); offsetY=Math.max(minY,Math.min(maxY,offsetY));
+    }
+    function draw(){
+      clamp(); ctx.clearRect(0,0,canvas.width,canvas.height); ctx.fillStyle="#101418"; ctx.fillRect(0,0,canvas.width,canvas.height);
+      const c=cover();
+      ctx.save();
+      ctx.filter=`brightness(${brightness}%) contrast(${contrast}%) saturate(${saturation}%)`;
+      ctx.translate(c.x+c.w/2,c.y+c.h/2); ctx.rotate(rotation*Math.PI/180); ctx.scale(flipX,1);
+      ctx.drawImage(img,-c.w/2,-c.h/2,c.w,c.h); ctx.restore();
+      ctx.save(); ctx.fillStyle="rgba(0,0,0,.48)"; ctx.fillRect(0,0,canvas.width,canvas.height); ctx.globalCompositeOperation="destination-out"; ctx.fillRect(0,0,canvas.width,canvas.height); ctx.restore();
+      ctx.strokeStyle="rgba(255,255,255,.9)"; ctx.lineWidth=2; ctx.strokeRect(1,1,canvas.width-2,canvas.height-2);
+      ctx.strokeStyle="rgba(255,255,255,.22)"; ctx.lineWidth=1;
+      for(let i=1;i<3;i++){ctx.beginPath();ctx.moveTo(canvas.width*i/3,0);ctx.lineTo(canvas.width*i/3,canvas.height);ctx.stroke();ctx.beginPath();ctx.moveTo(0,canvas.height*i/3);ctx.lineTo(canvas.width,canvas.height*i/3);ctx.stroke();}
+    }
+    function reset(){
+      ratio=1;zoom=1;offsetX=offsetY=0;rotation=0;flipX=1;brightness=100;contrast=100;saturation=100;
+      root.querySelectorAll("[data-ratio]").forEach(x=>x.classList.toggle("active",x.dataset.ratio==="1"));
+      ["cropZoom","cropBrightness","cropContrast","cropSaturation"].forEach((id,i)=>root.querySelector("#"+id).value=[1,100,100,100][i]); resizeCanvas();
+    }
+    img.onload=()=>resizeCanvas(); window.addEventListener("resize",resizeCanvas);
+    root.querySelectorAll("[data-ratio]").forEach(b=>b.onclick=()=>{root.querySelectorAll("[data-ratio]").forEach(x=>x.classList.remove("active"));b.classList.add("active");ratio=parseFloat(b.dataset.ratio);offsetX=offsetY=0;resizeCanvas();});
+    root.querySelector("#cropZoom").oninput=e=>{zoom=parseFloat(e.target.value);draw()};
+    root.querySelector("#cropBrightness").oninput=e=>{brightness=+e.target.value;draw()};
+    root.querySelector("#cropContrast").oninput=e=>{contrast=+e.target.value;draw()};
+    root.querySelector("#cropSaturation").oninput=e=>{saturation=+e.target.value;draw()};
+    root.querySelector("#cropRotateL").onclick=()=>{rotation=(rotation-90+360)%360;resizeCanvas()};
+    root.querySelector("#cropRotateR").onclick=()=>{rotation=(rotation+90)%360;resizeCanvas()};
+    root.querySelector("#cropFlipX").onclick=()=>{flipX*=-1;draw()};
+    root.querySelector("#cropReset").onclick=reset;
+    canvas.addEventListener("mousedown",e=>{drag=true;sx=e.clientX-offsetX;sy=e.clientY-offsetY});
+    window.addEventListener("mousemove",e=>{if(drag){offsetX=e.clientX-sx;offsetY=e.clientY-sy;draw()}});
+    window.addEventListener("mouseup",()=>drag=false);
+    canvas.addEventListener("touchstart",e=>{
+      if(e.touches.length===1){drag=true;sx=e.touches[0].clientX-offsetX;sy=e.touches[0].clientY-offsetY}
+      if(e.touches.length===2){drag=false;lastDist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY)}
+    },{passive:true});
+    canvas.addEventListener("touchmove",e=>{
+      if(e.touches.length===1&&drag){offsetX=e.touches[0].clientX-sx;offsetY=e.touches[0].clientY-sy;draw()}
+      else if(e.touches.length===2){const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);zoom=Math.max(1,Math.min(4,zoom+(d-lastDist)/180));root.querySelector("#cropZoom").value=zoom;lastDist=d;draw()}
+    },{passive:true});
+    canvas.addEventListener("touchend",()=>{drag=false;lastDist=0});
+    root.querySelector("#cropCancel").onclick=()=>{window.removeEventListener("resize",resizeCanvas);root.remove()};
+    root.querySelector("#cropSave").onclick=()=>{
+      const c=cover(),outW=ratio>=1?1000:750,outH=Math.round(outW/ratio),out=document.createElement("canvas");out.width=outW;out.height=outH;
+      const o=out.getContext("2d");o.imageSmoothingEnabled=true;o.imageSmoothingQuality="high";
+      o.fillStyle="#111";o.fillRect(0,0,outW,outH);o.filter=`brightness(${brightness}%) contrast(${contrast}%) saturate(${saturation}%)`;
+      const sxSrc=Math.max(0,(0-c.x)/c.scale),sySrc=Math.max(0,(0-c.y)/c.scale),sw=canvas.width/c.scale,sh=canvas.height/c.scale;
+      o.save();o.translate(outW/2,outH/2);o.rotate(rotation*Math.PI/180);o.scale(flipX,1);o.drawImage(img,-(sw*o.canvas.width/canvas.width)/2,-(sh*o.canvas.height/canvas.height)/2,sw*o.canvas.width/canvas.width,sh*o.canvas.height/canvas.height);o.restore();
+      const b64=out.toDataURL("image/jpeg",.92).split(",")[1];window.removeEventListener("resize",resizeCanvas);root.remove();onSave(b64);
+    };
   };
   reader.readAsDataURL(file);
 }
+
 
 /* ================================================================
    Settings / theme
@@ -1910,12 +2097,19 @@ async function boot() {
   const saved = sessionStorage.getItem(CONFIG.SESSION_KEY);
   if (saved) {
     currentToken = saved;
+    const cachedUser = await localGetMeta("user").catch(()=>null);
+    if (!navigator.onLine && cachedUser) {
+      currentUser=cachedUser;
+      await enterApp();
+      return;
+    }
     const r = await API.call("me");
     if (r.success) {
       currentUser = r.data.user;
       await enterApp();
       return;
     }
+    
     sessionStorage.removeItem(CONFIG.SESSION_KEY);
     currentToken = null;
   }
@@ -1936,8 +2130,11 @@ async function boot() {
   }
 
   document.addEventListener("visibilitychange", () => {
-    if (!document.hidden && currentUser) { loadConversations(); loadRequests(); }
+    if (!document.hidden && currentUser) { restoreLocalCache(); if(navigator.onLine){ syncOfflineQueue(); loadConversations(); loadRequests(); if(State.activeConvId) loadMessages(); } }
   });
+}
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => { navigator.serviceWorker.register("./sw.js?v=2").catch(() => {}); });
 }
 document.addEventListener("DOMContentLoaded", boot);
 </script>
