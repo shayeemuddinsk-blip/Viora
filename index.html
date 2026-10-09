@@ -591,7 +591,7 @@ window.CONFIG = {
   BACKUP_INTERVAL: Number(localStorage.getItem("viora.backupInterval") || 300000),
   CONTACT_EMAIL: "uskshayeem@gmail.com",
   BACKUP_KEY: "viora.autoBackup.v5",
-  HEARTBEAT_INTERVAL: 25000,
+  HEARTBEAT_INTERVAL: 10000,
   MAX_FILE_MB: 10,
   MAX_IMAGE_DIM: 1400,
   IMAGE_QUALITY: 0.82,
@@ -948,7 +948,7 @@ function wireAuthUI() {
     setVioraBusy("Signing in", "Verifying your account and opening your saved chats…");
     btn.innerHTML = "<span class=\"action-spinner\"></span><span>Signing in…</span>";
     try {
-      const r = await API.call("login", { username, password, forceLogin:false, deviceId:vioraDeviceId(), deviceLabel:vioraDeviceLabel() });
+      const r = await API.call("login", { username, password, deviceId:vioraDeviceId(), deviceLabel:vioraDeviceLabel() });
       if (!r.success) { clearVioraBusy(); if(r.code==="ACTIVE_SESSIONS"||r.data?.activeSessions){showActiveSessionsPopup(r.data?.activeSessions||[]);return;} showErr(r.message); return; }
       currentToken = r.data.token; currentUser = r.data.user;
       try { localStorage.setItem(CONFIG.SESSION_KEY, currentToken); } catch {}
@@ -1018,22 +1018,25 @@ function clearVioraBusy(){
 /* ================================================================
    Main App
    ================================================================ */
-async function resetPreviousAccountView_(){
-  // Never leave a previous account's private UI visible while switching accounts.
-  try { document.getElementById("appScreen")?.classList.add("hidden"); } catch {}
-  try { document.getElementById("authScreen")?.classList.remove("hidden"); } catch {}
-  try { State.messages=[]; State.requests=[]; State.conversations=[]; State.activeConvId=null; State.activePeer=null; State._convKey=""; State._messagesKey=""; } catch {}
-  try { await localClear("messages"); await localClear("requests"); await localClear("conversations"); } catch {}
-}
-
 async function enterApp() {
+  // Never render another account's cached chats, requests or messages.
+  const accountKey = String(currentUser?.userId || "");
+  const previousAccount = await localGetMeta("activeAccountUserId").catch(()=>null);
+  if (previousAccount && accountKey && previousAccount !== accountKey) {
+    await Promise.allSettled([
+      localClear("conversations"), localClear("requests"), localClear("messages"),
+      localSetMeta("user", null)
+    ]);
+    State.conversations=[]; State.requests=[]; State.messages=[]; State.activeConvId=null;
+    State.activePeer=null; State._convKey=""; State._renderedMessagesSignature=null;
+  }
+  if (accountKey) await localSetMeta("activeAccountUserId", accountKey).catch(()=>{});
   const loading=document.getElementById("vioraChatLoading");if(loading && !loading.classList.contains("show")){const t=document.getElementById("vioraLoadingTitle"),sub=document.getElementById("vioraLoadingSub");if(t)t.textContent="Opening Viora";if(sub)sub.textContent="Restoring chats saved on this device…";loading.classList.add("show");loading.setAttribute("aria-hidden","false");}State.appLoading=true;
-  document.getElementById("authScreen").classList.add("hidden");document.getElementById("appScreen").classList.add("hidden");renderMe();
+  document.getElementById("authScreen").classList.add("hidden");document.getElementById("appScreen").classList.remove("hidden");renderMe();
   if(!State.composerWired){wireComposer();State.composerWired=true;}
   try{
     // Local data is rendered first. Server sync is deliberately non-blocking.
     await restoreLocalCache(); State.localReady=true;
-    document.getElementById("appScreen").classList.remove("hidden");
     loading?.classList.remove("show");loading?.setAttribute("aria-hidden","true");
     if(navigator.onLine){
       Promise.allSettled([loadConversations(),loadRequests(),syncOfflineQueue()]).then(()=>{autoBackupSnapshot();});
@@ -1095,7 +1098,7 @@ function renderList() {
       wrap.innerHTML = `<div class="empty-state"><span class="em-icon">📬</span><div class="em-title">No pending requests</div>When someone sends you a friend request, it will appear here.</div>`;
       return;
     }
-    wrap.innerHTML = `<div class="section-title-row"><div><strong>Friend requests</strong><div class="section-sub">${State.requests.length} pending request${State.requests.length===1?'':'s'}</div></div><span class="request-count-pill">${State.requests.length}</span></div>` + State.requests.map(r => `
+    wrap.innerHTML = `<div class="section-title-row"><div><strong>Friend requests</strong><div class="section-sub">${State.requests.length} pending request${State.requests.length===1?'':'s'}</div></div></div>` + State.requests.map(r => `
       <div class="list-item" data-req="${H.esc(r.requestId)}">
         <div class="avatar-wrap">
           ${H.avatarHtml(r)}
@@ -1259,7 +1262,8 @@ async function openConversation(id) {
   const last = State.messages[State.messages.length - 1];
   if (last && last.senderId !== currentUser.userId) {
     await API.call("markRead", { conversationId: id, upToMessageId: last.messageId });
-    await loadConversations();
+    // Refresh the messages after the server records read receipts so blue ticks update immediately.
+    await Promise.allSettled([loadMessages(), loadConversations()]);
   }
 }
 function closeChat(fromPopState = false) {
@@ -1323,7 +1327,7 @@ document.addEventListener("click", async e=>{const a=e.target.closest("a[data-ph
 function renderMessages(forceBottom = false) {
   const me = currentUser.userId;
   const wrap = document.getElementById("messages");
-  const signature = JSON.stringify(State.messages.map(m => [m.messageId,m.timestamp,m.senderId,m.messageType,m.text,m.fileUrl,m.fileName,m.status,m.editedAt,!!m.deletedForEveryone,m.reactions,m.replyTo]));
+  const signature = JSON.stringify(State.messages.map(m => [m.messageId,m.timestamp,m.senderId,m.messageType,m.text,m.fileUrl,m.fileName,m.status,m.readAt,m.deliveredAt,m.editedAt,!!m.deletedForEveryone,m.reactions,m.replyTo]));
   if (!forceBottom && State._renderedMessagesSignature === signature && wrap.childElementCount) return;
   let lastDate = null, html = "";
   // Informational system notice: UI-only, not a fake message and not stored on the server.
